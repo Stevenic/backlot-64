@@ -431,3 +431,15 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global b64_bench_begin
 .global b64_bench_end           ; b64_val = elapsed cycles (24-bit)
 .global b64_bench_show          ; prints last and max at row 0
+
+; debug: -DFRAME_TRACE logs (tag, frame, raster line) triples at $E400
+.macro FTRACE tag
+.ifdef FRAME_TRACE
+        php
+        pha
+        lda #tag
+        jsr ftrace_log
+        pla
+        plp
+.endif
+.endmacro

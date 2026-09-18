@@ -432,6 +432,20 @@ The game callback must return before raster 250 to have its changes shown this f
 
 ---
 
+### 6.1 Where per-frame work runs
+
+Measured with `-DFRAME_TRACE` on the cutscene example, 2026-09-17, after a stall was traced to the shimmer running inside the vertical-blank interrupt:
+
+| Where | What | Cost today | Rule |
+|---|---|---|---|
+| Vertical-blank interrupt | Take the finished sprite list and write the first hardware sprites, then the mode's blank work (bitmap registers, a deferred park or unpark) | about 2,200 cycles | Short, and the sprite registers first so they are always written in the border. Nothing here may cost more than a few hundred cycles. |
+| Main loop, the game callback | The VM tick: every ready thread, the sprite grid submission, the frame streaming, the list sort | about 9,600 cycles on the cutscene | The game's budget. The engine measures it and the VM budget scales with the tier. |
+| Main loop, engine effects | `b64_cut_frame`: the reflection shimmer every fourth frame; later colour cycling and charset animation | about 3,000 cycles on a shimmer frame | Background effects live here, after the callback and before the rows they touch are drawn, so they cost frame time and never interrupt latency. Each effect declares its cost. |
+
+The frame holds when the three together stay under the 19,656 cycles a PAL frame has. A background effect that cannot fit is spread over frames, not moved into the interrupt: the shimmer running in the blank cost 8,700 cycles there and made the car hold still one frame in four.
+
+---
+
 ## 7. API
 
 Calling convention: `jsr` with arguments in zero page variables owned by the engine, A/X/Y for short arguments. All routines preserve nothing unless stated. Symbols are prefixed `b64_`.

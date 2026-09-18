@@ -31,6 +31,9 @@
 .include "b64.inc"
 
 .import shim_on
+.ifdef FRAME_TRACE
+.import ftrace_log
+.endif
 
 .export b64_vm_start
 .export b64_vm_tick
@@ -96,6 +99,7 @@ b64_vm_start:
 ; b64_vm_tick: once per frame.  Sleeping threads count down; ready threads
 ; run until they yield, wait, end, or spend the jump budget.
 b64_vm_tick:
+        FTRACE 8
         jsr b64_spr_begin
         ldx #0
 @thread:
@@ -120,10 +124,12 @@ b64_vm_tick:
         sta th_pclo,x
         lda vm_pch
         sta th_pchi,x
-@next:  ldx vm_cur
+@next:  FTRACE 11
+        ldx vm_cur
         inx
         cpx #VM_THREADS
         bcc @thread
+        FTRACE 9
         jmp b64_spr_end
 
 ; ---------------------------------------------------------------------------

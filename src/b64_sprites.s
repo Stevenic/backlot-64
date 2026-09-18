@@ -22,6 +22,10 @@
 .import split_line
 .import cut_active
 
+.ifdef FRAME_TRACE
+.import ftrace_log
+.endif
+
 .segment "LOWRAM"
 spr_ready:      .res 1          ; 1 = a finished list waits for the next vblank
 vs_xlo:         .res 48
@@ -48,8 +52,10 @@ bit_clr:        .byte $FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F
 
 ; ---------------------------------------------------------------------------
 b64_spr_begin:
+        FTRACE 4
 :       lda spr_ready           ; the previous list must be taken first
         bne :-
+        FTRACE 5
         sta spr_count_b
         rts
 
@@ -114,7 +120,8 @@ slot_load:
         cmp slot_bk,x
         bne @load
         rts
-@load:  lda b64_reu
+@load:  FTRACE 12
+        lda b64_reu
         sta slot_lo,x
         lda b64_reu+1
         sta slot_hi,x
@@ -145,6 +152,7 @@ slot_load:
 ; Insertion sort of the build list's order array by y.
 ; b64_tmp+0 = lo, +1 = hi bound, +2 = key, +3 = key y, +4 = i, +5 = left count
 b64_spr_end:
+        FTRACE 10
         lda spr_count_b
         beq @done
         clc
@@ -309,6 +317,7 @@ b64_spr_vblank:
 :       sta split_line
         lda spr_ready           ; only a finished list is shown
         beq @keep
+        FTRACE 7
         lda #0
         sta spr_ready
         lda spr_base_b

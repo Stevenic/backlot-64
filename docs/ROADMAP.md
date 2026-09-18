@@ -4,7 +4,7 @@ Where the engine is going and in what order. `PLAN.md` is the design and its mil
 
 ## Where it stands (September 2026)
 
-Running in VICE: the core, the data engine with a slot packer, the 8-way scroller over a 2048x2048 metatile world, the 24-sprite multiplexer with frame streaming, the HUD split, cutscenes with pixel-exact sprite-to-bitmap parking and a reflection shimmer, a p-code VM executing scripts from the REU through a page cache, and a boot probe that scales from a stock C64 with an 8 MB REU to the C64 Ultimate. Resident code 8.2 KB. Scroller worst case 9,200 cycles against a 6,000 target. VM 82 to 116 cycles per opcode.
+Running in VICE: the core, the data engine with a slot packer, the 8-way scroller over a 2048x2048 metatile world, the 24-sprite multiplexer with frame streaming, the HUD split, cutscenes with pixel-exact sprite-to-bitmap parking and a reflection shimmer, a p-code VM executing scripts from the REU through a page cache, and a boot probe that scales from a stock C64 with an 8 MB REU to the C64 Ultimate. Resident code 8.5 KB. Scroller worst case 9,200 cycles against a 6,000 target. VM 82 to 116 cycles per opcode. Cutscene frame: 2,200 cycles in the blank, 9,600 in the tick, 3,000 for the shimmer every fourth frame.
 
 ## Phase 1: Solid
 
@@ -23,7 +23,7 @@ The three budgets that are over or fragile, each fixed by an idea with a measure
 6. **Fills.** Character colour packed into the screen code so the redraw is one load and two stores, plus per-metatile flags for uniform colour and no colour write. Target: scroller worst case under 6,000 cycles. *After Cadaver's c64gameframework.*
 7. **VM dispatch.** Done 2026-09-17. Page-aligned `jmp (table)` dispatch with pre-doubled opcodes and a self-modified page byte in the opcode fetch, per-byte page wrap in place of the boundary buffer, budget charged on taken jumps. Measured: 82 to 116 cycles per opcode (was 116 to 147), the drive loop 6.8 times assembly (was 11). *After the Å-machine.*
 8. **Page table with a pin bit.** A 256-entry map replaces the linear tag scan; a running thread's page can never be evicted. *After the Å-machine.*
-9. **Multiplexer.** Persistent sort order with sorting only when the count changes, grouped IRQs with a count-aware advance and direct fall-through when late, ninth-sprite rejection, thinning as the fallback, and two layer bits for draw order. *After c64gameframework, leissa/c64engine and hhprg/C64Engine.*
+9. **Multiplexer and the tick.** The cutscene tick is 9,600 cycles, most of it the object's eight sprite submissions with their animation lookups and the list sort; measure each part with `-DFRAME_TRACE` and cut it before adding the ninth sprite. Then: persistent sort order with sorting only when the count changes, grouped IRQs with a count-aware advance and direct fall-through when late, ninth-sprite rejection, thinning as the fallback, and two layer bits for draw order. *After c64gameframework, leissa/c64engine and hhprg/C64Engine.*
 10. **Turbo tier shift.** A CPU screen shift selected by the boot probe, because DMA does not speed up. *After DOOM C64U's measurements.*
 
 ## Phase 3: A world

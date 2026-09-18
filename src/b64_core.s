@@ -18,6 +18,7 @@
 .import spr_slots_reset
 .import cut_active
 .import cut_vblank
+.import b64_cut_frame
 .import cut_split
 .import mux_first
 
@@ -38,6 +39,26 @@ irq_save:       .res 20
 .segment "CODE"
 _start:
         jmp game_main
+
+.ifdef FRAME_TRACE
+.export ftrace_log
+ftrace_log:
+        stx $E3FE
+        ldx $E3FF
+        cpx #252
+        bcs @full               ; the ring is a one-shot log: stop when full
+        sta $E400,x
+        lda b64_frame
+        sta $E401,x
+        lda VIC_HLINE
+        sta $E402,x
+        inx
+        inx
+        inx
+        stx $E3FF
+@full:  ldx $E3FE
+        rts
+.endif
 
 ; ---------------------------------------------------------------------------
 b64_init:
@@ -176,7 +197,10 @@ b64_run:
         jmp @loop
 @cut:   ; cutscene: no scroller, the callback drives everything
         jsr read_joystick
+        FTRACE 3
         jsr call_cb
+        FTRACE 6
+        jsr b64_cut_frame       ; the shimmer, after the callback and before the rows it touches are drawn
         jmp @loop
 
 call_cb:
@@ -198,13 +222,18 @@ irq:
         pha
         lda VIC_HLINE
         cmp #250
-        bcs @vblank
-        cmp split_line
-        bcc @chain
+        bcc :+
+        jmp @vblank
+:       cmp split_line
+        bcc @tochain
         lda split_done
-        bne @chain
+        bne @tochain
         lda cut_active
         beq @hud
+        jmp @split
+@tochain:
+        jmp @chain
+@split:
         jsr cut_split
         lda #1
         sta split_done
@@ -213,6 +242,7 @@ irq:
 @sched: jsr mux_schedule        ; continue the chain past the split
         jmp @ack
 @vblank:
+        FTRACE 1
         ; the vblank work does DMA and uses the shared scratch while the main
         ; loop may be in the middle of using it: keep the main loop's copy
         ldx #19
@@ -225,8 +255,11 @@ irq:
         bne @cutvb
         jsr scr_vblank
         jmp @spr
-@cutvb: jsr cut_vblank
+@cutvb: jsr b64_spr_vblank      ; the sprite registers first, while the raster is still in the border
+        jsr cut_vblank
+        jmp @vbchk
 @spr:   jsr b64_spr_vblank
+@vbchk:
         ; if the vblank work ran into the next frame past the first chain
         ; line, that interrupt would never fire and the chain would stall
         ; for a frame: catch up now instead
@@ -243,6 +276,7 @@ irq:
         jsr mux_chain
         jmp @vbdone
 @vbdone:
+        FTRACE 2
         ldx #9                  ; restore $06-$0F and $12-$19, not the frame counter
 :       lda irq_save,x
         sta b64_ptr,x

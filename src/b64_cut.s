@@ -19,6 +19,7 @@
 .export cut_vblank
 .export cut_split
 .export shim_on
+.export b64_cut_frame
 .export cut_row_lo, cut_row_hi
 
 CUT_BITMAP      = $6000
@@ -58,6 +59,8 @@ obj_y:          .res 1
 obj_anim:       .res 3          ; animation section: nframes, nsprites, indices, frames
 shim_n:         .res 1          ; shimmer cells in the loaded still
 shim_cells:     .res 238        ; (column, row) pairs
+shim_lo:        .res 119        ; colour-cell address of each cell, low byte
+shim_hi:        .res 119        ; high byte; bit 7 set while the cell is under a parked block
 shim_on:        .res 1
 shim_parked:    .res 1          ; 1 while an object block covers part of the still
 shim_rx0:       .res 1          ; the parked rectangle in cells: x0, x1 (exclusive), y0, y1
@@ -174,7 +177,8 @@ b64_cut_still:
         bcc :+
         lda #0
         sta shim_n
-:       jsr text_colours
+:       jsr shim_precompute
+        jsr text_colours
         lda #%00111011          ; bitmap, display on, 25 rows, yscroll 3
         sta VIC_CTRL1
         rts
@@ -483,7 +487,6 @@ cut_vblank:
         sta VIC_CTRL1
         lda #%00011000
         sta VIC_CTRL2
-        jsr shimmer_tick
         ; deferred park/unpark: runs in the border, in the same vblank as the
         ; sprite list swap, so the sprite form vanishes as the block appears.
         ; Only on a frame where the shimmer is in its base phase (blocks were
@@ -506,7 +509,75 @@ cut_vblank:
 ; shimmer: every 4th frame swap the two colour codes of each listed cell by
 ; exchanging the nibbles of its screen byte, so the dither pattern inverts and
 ; the reflection appears to move.  ~20 cycles per cell, in the border.
-shimmer_tick:
+; shim_precompute: (column, row) pairs -> colour-cell addresses
+shim_precompute:
+        ldx #0
+        ldy #0
+@c:     cpx shim_n
+        bcs @done
+        lda shim_cells+1,y      ; row
+        sta b64_tmp
+        lda shim_cells,y        ; column
+        pha
+        ldy b64_tmp
+        lda cut_row_lo,y
+        sta b64_tmp+1
+        lda cut_row_hi,y
+        clc
+        adc #>CUT_BMSCREEN
+        sta shim_hi,x
+        pla
+        clc
+        adc b64_tmp+1
+        sta shim_lo,x
+        bcc :+
+        inc shim_hi,x
+:       inx
+        txa
+        asl
+        tay
+        jmp @c
+@done:  rts
+
+; shim_mask: flag (bit 7 of shim_hi) every cell inside the parked rectangle
+; so the shimmer leaves it alone; A = 0 clears every flag
+shim_mask:
+        ldx #0
+        ldy #0
+@c:     cpx shim_n
+        bcs @done
+        lda shim_hi,x
+        and #$7F
+        sta shim_hi,x
+        lda shim_parked
+        beq @next
+        lda shim_cells+1,y      ; row
+        cmp shim_ry0
+        bcc @next
+        cmp shim_ry1
+        bcs @next
+        lda shim_cells,y        ; column
+        cmp shim_rx0
+        bcc @next
+        cmp shim_rx1
+        bcs @next
+        lda shim_hi,x
+        ora #$80
+        sta shim_hi,x
+@next:  inx
+        iny
+        iny
+        jmp @c
+@done:  rts
+
+; b64_cut_frame: the engine's per-frame work in a cutscene, run from the
+; main loop after the game callback.  Every 4th frame it swaps the two
+; colour codes of each listed reflection cell (nibble swap through a table)
+; so the wet road moves.  It runs before the reflection rows are drawn, so
+; the change lands within the frame; and it runs here, not in the vertical
+; blank, because 80 cells cost about 3,000 cycles and the interrupt must
+; stay short.  Cells under a parked block are flagged and skipped.
+b64_cut_frame:
         lda shim_on
         beq @done
         lda b64_frame
@@ -515,54 +586,19 @@ shimmer_tick:
         ldx #0
 @cell:  cpx shim_n
         bcs @done
-        ; skip cells under a parked object
-        lda shim_parked
-        beq @go
-        txa
-        asl
-        tay
-        lda shim_cells+1,y      ; row
-        cmp shim_ry0
-        bcc @go
-        cmp shim_ry1
-        bcs @go
-        lda shim_cells,y        ; column
-        cmp shim_rx0
-        bcc @go
-        cmp shim_rx1
-        bcc @skip
-@go:    txa
-        asl
-        tay
-        lda shim_cells+1,y      ; row
-        tay
-        lda cut_row_lo,y
-        sta b64_ptr
-        lda cut_row_hi,y
-        clc
-        adc #>CUT_BMSCREEN
+        lda shim_hi,x
+        bmi @skip
         sta b64_ptr+1
-        txa
-        asl
-        tay
-        lda shim_cells,y        ; column
-        tay
+        lda shim_lo,x
+        sta b64_ptr
+        ldy #0
         lda (b64_ptr),y
-        sta b64_tmp+6
-        asl
-        asl
-        asl
-        asl
-        sta b64_tmp+5
-        lda b64_tmp+6
-        lsr
-        lsr
-        lsr
-        lsr
-        ora b64_tmp+5
+        tay
+        lda nibble_swap,y
+        ldy #0
         sta (b64_ptr),y
 @skip:  inx
-        jmp @cell
+        bne @cell
 @done:  rts
 
 ; ---------------------------------------------------------------------------
@@ -880,6 +916,7 @@ obj_blit:
         sta shim_ry1
         lda #1
         sta shim_parked
+        jsr shim_mask
         lda #0
         sta obj_k               ; row
 @row:   ldx obj_k
@@ -1002,6 +1039,7 @@ obj_blit:
 obj_restore:
         lda #0
         sta shim_parked
+        jsr shim_mask
         sta obj_k
 @row:   ldx obj_k
         cpx obj_hdr+3
@@ -1048,4 +1086,11 @@ cut_row_lo:
 cut_row_hi:
 .repeat 25, r
         .byte >(r*40)
+.endrepeat
+
+.segment "RODATA"
+; nibble_swap: the byte with its two colour codes exchanged
+nibble_swap:
+.repeat 256, i
+        .byte ((i & $0F) << 4) | (i >> 4)
 .endrepeat
