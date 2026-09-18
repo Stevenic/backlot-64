@@ -34,6 +34,7 @@
 .export probe_tick_end
 .export probe_init
 .export probe_vm_active
+.export probe_vm_pc
 .export probe_opcount_lo
 .export probe_opcount_hi
 
@@ -61,6 +62,7 @@ P_OPHI          = P_OPLO+128
 
 .segment "LOWRAM"
 probe_vm_active: .res 1         ; 1 while the VM is executing a thread
+probe_vm_pc:    .res 1          ; offset lo of the opcode being executed (Y is reused inside handlers)
 probe_tmp:      .res 2
 
 .segment "CODE"
@@ -202,7 +204,7 @@ probe_sample:
         lda vm_pch
         iny
         sta (b64_tmp+6),y
-        lda $0103,x             ; Y at the interrupt = script offset lo
+        lda probe_vm_pc         ; the offset of the opcode in flight
         iny
         sta (b64_tmp+6),y
         jmp @done

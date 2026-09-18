@@ -141,6 +141,9 @@ b64_vm_tick:
 ; the dispatch loop.  vm_next and vm_exec: Y = offset lo of the next opcode.
 vm_next:
 vm_exec:
+.ifdef B64_PROFILE
+        sty probe_vm_pc
+.endif
         lda $C100,y             ; the page byte is patched by vm_resolve
 vm_fetch_hi = *-1
         iny

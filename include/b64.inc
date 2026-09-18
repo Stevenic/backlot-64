@@ -464,6 +464,7 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global probe_tick_end
 .global probe_init
 .global probe_vm_active
+.global probe_vm_pc
 .global probe_opcount_lo
 .global probe_opcount_hi
 .endif
