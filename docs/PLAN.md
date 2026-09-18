@@ -447,6 +447,25 @@ Measured with `-DFRAME_TRACE` on the cutscene example, 2026-09-17, after a stall
 
 The frame holds when the three together stay under the 19,656 cycles a PAL frame has. A background effect that cannot fit is spread over frames, not moved into the interrupt: the shimmer running in the blank cost 8,700 cycles there and made the car hold still one frame in four.
 
+### 6.2 Tick rates: logic at 25, motion at 50
+
+Decided 2026-09-18 with the user; to be built in roadmap step 9.
+
+A PAL display refreshes 50.12 times a second, so the rates that lock without judder are divisors of 50: 50, 25 and 16.7. Thirty would update on three frames in five and 45 on nine in ten, both visibly uneven; 60 needs an NTSC machine. The engine therefore separates two things that today run together:
+
+- **The display runs every frame, always.** Scroll registers, the multiplexer, raster splits and the blank's work are interrupt-driven and never skip a frame.
+- **The game tick runs at a rate the game declares per mode: every frame (50) or every second frame (25).** The tick is the callback: scripts, modules, entity updates and the sprite list. A game may let the platform tier pick the rate at boot, 25 on a stock machine and 50 on the Ultimate, but never changes it inside a mode, so no module needs a variable time step.
+
+**Motion at 50 on a 25 tick.** Each tick gives the camera and every sprite a position; the frame between two ticks shows each at the midpoint of its last two positions. That costs one frame (20 ms) of latency and never overshoots, so a stop, a turn and a park stay pixel-exact, which extrapolation cannot promise. The tick prepares both frames: the midpoint sprite list (a copy with half-steps, re-sorted, since a half-step can swap two sprites' order) and any scroll preparation the midpoint camera needs, so the interrupt only chooses which prepared frame to show. A 25 tick has two frames of time; it overruns only past that, and an overrun slows the game rather than skipping, as today, with the probe's histogram showing it.
+
+**Budgets as deadlines.** Work that can use whatever time is left, the VM first, runs until a raster line rather than for a count of opcodes or cycles: one compare of the raster register, about 4 cycles against 82 to 118 per opcode. The same build then uses the headroom a 16 MB machine, a 25 tick or a 64 MHz turbo gives it, without the boot probe guessing at speed tables that differ between boards and change in the Ultimate's menu. The CIA timers keep their 1 MHz clock under turbo (`ULTIMATE.md`), so the probe measures the frame in time on every tier.
+
+**Open, to settle when it is built:**
+
+- Memory. The midpoint list needs the previous positions of 24 entries, about 100 bytes with double-buffering, and the low-RAM tables have 25 bytes free.
+- Script time. YIELD is one tick; whether WAIT counts ticks or frames. Ticks keep scripts simple and make a script belong to its mode's rate; frames keep a caption's hold the same length at either rate. The engine exposes the rate either way.
+- The check. A 25-tick example in `make check` that proves positions change every frame, ticks land every second frame, and a park after a 25-tick drive is still exact.
+
 ---
 
 ## 7. API
