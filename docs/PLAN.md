@@ -85,7 +85,15 @@ A frame with a one-cell scroll in both axes costs:
 
 A frame with no cell crossing costs under 100 cycles for the scroll register update.
 
-**Measured (E1, 2026-09-15):** no-crossing frame 173 cycles. Crossing frame 6,601 cycles for the preparation (shift DMA plus both fills) and about 2,600 for the vertical-border colour shift and staged writes, roughly 9,200 in total, or half the frame. Above target. `make check` measures the preparation alone over the autodrive square with traffic on screen: 10,361 cycles worst frame (2026-09-18), held by `budgets.txt` until the fills land. The fills are the remaining cost, about 45 cycles per cell over 65 cells, and are the next optimisation: unrolled expansion and a single DMA for the column's metatiles once the world is stored in 8-row bands.
+**Measured (E1, 2026-09-15):** no-crossing frame 173 cycles. Crossing frame 6,601 cycles for the preparation and about 2,600 for the vertical-border colour shift, roughly 9,200 in total, or half the frame.
+
+**Measured after the fills (roadmap step 6, 2026-09-18),** with interrupts off from the benchmark: a crossing to the right 4,218 cycles, down 4,124, diagonally 5,754, the worst case, under the 6,000 target (before: 4,609, 4,281 and 6,341). The vertical border's work after a crossing fell from 3,109 cycles to 1,119. Three changes made it:
+
+- **Colour in the screen code.** Every scene character's colour is the low four bits of its code, assigned by the tileset tool, so colour RAM is the screen itself. The metatile colour table is gone, and with it the colour lookup in every fill and the staged colour writes in the border. After Cadaver's c64gameframework.
+- **One REU copy of the shown screen.** The finished back buffer is stashed to REU scratch once per crossing. The next crossing's shift is one fetch from it, and the border's colour RAM update is one fetch from it, where the old design stashed and fetched twice.
+- **Fills that move one byte per cell.** Rows store through an address patched once per row, with whole metatile rows unrolled. Columns gather each metatile's four cells in a run from a second copy of the library stored by column, then write down the screen with one unrolled store per row. A column's seven metatile ids come from one-byte DMAs that rewrite only the REU address, since a transfer leaves the length at 1.
+
+The picture is proven, not assumed: `make check` compares the scrolled screen and colour RAM with a full redraw of the world computed from the map and the tileset. In the autodrive example the prepare's worst frame with interrupts is 7,750 cycles (from 10,361). The example still drops 89 frames in 800 (from 100), because its own per-frame work, the traffic, the sprite sort and the debug numbers, now dominates; that is roadmap step 9.
 
 ### 3.2 World
 
@@ -95,7 +103,7 @@ There is no map window in main RAM. The scroller fetches the metatiles under the
 
 ### 3.3 Tilesets
 
-A tileset is one charset (2 KB), one metatile library (256 metatiles, 16 cell indices and 16 cell colours each, 8 KB), and one properties table (256 bytes: solid, road direction bits, water, door, ramp). A tileset also carries its day and night variants: two charsets and two colour tables, with one metatile library shared. Regions of the world are assigned tileset slots by a 64x64 region table, one byte per 32x32-metatile sector.
+A tileset is one charset (2 KB), one metatile library (256 metatiles of 16 screen codes, 4 KB, with a second copy stored by column for column fills), and one properties table (256 bytes: solid, road direction bits, water, door, ramp). A cell's colour is the low four bits of its screen code, so there is no colour table; a colour value can have at most twelve characters (the tool assigns the codes and says when a tileset exceeds it). A tileset also carries its day and night variants: two charsets sharing one metatile library, with night colours in the night charset's codes. Regions of the world are assigned tileset slots by a 64x64 region table, one byte per 32x32-metatile sector.
 
 **Core and regional halves.** For a world with several outdoor regions, the charset is split: cells 0 to 95 are the *core*, identical in every outdoor tileset and never using shared colour 2; cells 96 to 191 are *regional*; 192 to 255 are the font. Metatiles built only from core cells are core metatiles. The world tool guarantees a band of core metatiles at least one screen wide on both sides of every region boundary. A region change is then a swap of the regional 768 bytes of charset, the regional metatile entries, and one shared colour register, done when the camera's sector changes while only core metatiles are on screen. It costs about 1,500 cycles and is invisible. Two of the three shared colours are fixed for all outdoor tilesets in a world; the tileset tool enforces that core cells dedupe to the same indices in every regional tileset.
 
@@ -381,7 +389,7 @@ The engine reserves fixed regions. The game gets everything else.
 |---|---|---|---|
 | $0002-$004F | 78 B | engine | Zero page: camera, scroll state, DMA scratch, sprite list pointers |
 | $0050-$00FF | 176 B | game | |
-| $0200-$07FF | 1.5 KB | engine | Sprite sort tables, split table, colour cycle list, staged column and row colours |
+| $0200-$07FF | 1.5 KB | engine | Sprite sort tables, split table, colour cycle list, the scroller's metatile ids and column buffer |
 | $0800-$2FFF | 10 KB | engine | Resident core (7.7 KB used with the VM, page cache and platform layer) |
 | $3000-$3FFF | 4 KB | game | Game resident core |
 | $4000-$43FF | 1 KB | engine | Screen A |
@@ -390,11 +398,12 @@ The engine reserves fixed regions. The game gets everything else.
 | $5000-$5BFF | 3 KB | engine | Sprite slots: 25 in use (1.6 KB), 64 bytes each; a cutscene's colour cells sit above at $5C00 |
 | $6000-$7FFF | 8 KB | game | Except $7FFF, the VIC idle byte, which the engine keeps at 0 |
 | $8000-$9FFF | 8 KB | engine | Overlay region A, managed by the overlay loader |
-| $A000-$BFFF | 8 KB | engine | Active metatile library: cells at $A000, colours at $B000 |
+| $A000-$BFFF | 8 KB | engine | Active metatile library: by row at $A000, by column at $B000 |
 | $C000-$C0FF | 256 B | engine | Metatile properties |
 | $C100-$C8FF | 2 KB | engine | Page cache: eight 256-byte copies of REU pages |
 | $C900-$C9FF | 256 B | engine | The VM's vector table, copied there at script start |
-| $CA00-$CFFF | 1.5 KB | engine | Overlay region B, for small modules that must coexist with a region A module |
+| $CA00-$CBFF | 512 B | engine | Scroller tables (metatile id to library address), generated by `b64_redraw` |
+| $CC00-$CFFF | 1 KB | engine | Overlay region B, for small modules that must coexist with a region A module |
 | $D000-$DFFF | 4 KB | I/O | VIC, SID, CIA, REU registers at $DF00 |
 | $E000-$FFF9 | 8 KB | game | Entity tables and game state |
 
@@ -428,7 +437,7 @@ The engine owns the raster interrupt chain. One frame, in order:
 | 0 | engine | Apply scroll registers and buffer flip prepared last frame. Start the sprite chain. |
 | 0 to 249 | engine | Sprite multiplexer interrupts at each reuse point. Raster splits at their lines. |
 | 0 to 249 | game | Main loop: the game's per-frame callback runs here in the gaps. It reads input, updates entities, and calls engine functions to set the camera and submit sprites. |
-| 250 | engine | Vertical border work: colour RAM shift by DMA, staged colour fills, charset animation, colour cycling, then latch the next frame's scroll and flip. |
+| 250 | engine | Vertical border work: colour RAM from the REU copy of the new screen by one DMA, charset animation, colour cycling, then latch the next frame's scroll and flip. |
 | 251 to 311 | engine | Remaining border time is spare. Music drivers conventionally hook here. |
 
 The game callback must return before raster 250 to have its changes shown this frame. If it overruns, the engine shows the previous state for one more frame and nothing tears.

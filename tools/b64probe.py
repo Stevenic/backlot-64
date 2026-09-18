@@ -63,31 +63,16 @@ def nearest(labels, addr):
 
 
 # ---------------------------------------------------------------- sources
-def from_vice(prg, reu, reusize, seconds):
-    p = subprocess.Popen(["x64sc", "-default", "-reu", "-reusize", str(reusize), "-reuimage", reu, "+reuimagerw",
-                          "+sound", "+confirmonexit", "-remotemonitor", "-remotemonitoraddress",
-                          "ip4://127.0.0.1:6512", "-autostartprgmode", "1", prg],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(seconds)
-    s = socket.create_connection(("127.0.0.1", 6512), timeout=5)
-
-    def cmd(c, wait=0.4):
-        s.sendall((c + "\n").encode()); time.sleep(wait); out = b""; s.settimeout(0.3)
-        try:
-            while True:
-                d = s.recv(65536)
-                if not d:
-                    break
-                out += d
-        except Exception:
-            pass
-        return out.decode(errors="replace")
-
-    cmd("r")
-    tmp = os.path.abspath("build/probe.bin")
-    cmd(f'save "{tmp}" 0 {PROBE:04x} {PROBE + SIZE - 1:04x}', 1.0)
-    cmd("quit"); p.wait(timeout=5)
-    return open(tmp, "rb").read()[2:]
+def from_vice(prg, reu, reusize, seconds, labels=None):
+    """Run in VICE (warp, driven by b64vice) for `seconds` of emulated time
+    after boot, then read the block."""
+    from b64vice import Vice
+    v = Vice(prg, int(reusize), reu, labels)
+    try:
+        v.frames(int(seconds * 50))
+        return v.mem(PROBE, SIZE)
+    finally:
+        v.close()
 
 
 def from_host(host, password, run):

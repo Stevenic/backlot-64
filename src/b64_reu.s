@@ -111,8 +111,8 @@ boot_want:      .byte "B64R", REU_FORMAT, <REU_LAYOUT_HASH, >REU_LAYOUT_HASH
 
 ; Load a tileset from the REU slot at b64_reu:
 ;   +$0000 charset  -> B64_CHARSET  (2 KB)
-;   +$0800 mtchars  -> B64_MTCHARS  (4 KB)
-;   +$1800 mtcols   -> B64_MTCOLS   (4 KB)
+;   +$0800 mtchars  -> B64_MTCHARS  (4 KB, screen codes with the colour in the low four bits)
+;   +$1800 mtcolumns -> B64_MTCOLUMNS (4 KB, the same by column, for column fills)
 ;   +$2800 props    -> B64_PROPS    (256)
 b64_load_tileset:
         B64_SET16 b64_ptr, B64_CHARSET
@@ -123,7 +123,7 @@ b64_load_tileset:
         B64_SET16 b64_len, $1000
         jsr b64_fetch
         jsr reu_advance_len
-        B64_SET16 b64_ptr, B64_MTCOLS
+        B64_SET16 b64_ptr, B64_MTCOLUMNS
         B64_SET16 b64_len, $1000
         jsr b64_fetch
         jsr reu_advance_len

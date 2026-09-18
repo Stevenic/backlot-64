@@ -8,9 +8,8 @@ entry:
         sta b64_val
         lda #>msg
         sta b64_val+1
-        lda #5
         ldx #2
-        jsr b64_text
+        jsr b64_hud_text
         lda #$B2
         sta $E000
         inc $E001

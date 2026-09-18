@@ -10,15 +10,19 @@
 ;   11    one VM tick of the cutscene's drive loop body: 71 opcodes, 4 steps
 ;   12    64 iterations of the same drive step written in assembly
 ;   13    one VM tick of 63 ADD v,w then YIELD (65 opcodes with the restart JMP)
+;   14    (platform flags and REU size, not a time)
+;   15-17 one scroller prepare for a cell crossing to the right, down, and
+;         diagonally, started at line 100 with the example tileset and world
 
 .include "b64.inc"
 .include "slots.inc"
 
 .import spr_slots_reset
+.import scr_vblank
 .export game_main
 
 .segment "GAMETOP"
-results:        .res 3*16
+results:        .res 3*20
 res_i:          .res 1
 ; assembly drive state (the old engine routine, verbatim)
 cs_act_x:       .res 2
@@ -91,11 +95,42 @@ game_main:
         sta results+3*14
         lda b64_reu_mb
         sta results+3*14+1
+
+        ; --- the scroller: one crossing each way, interrupts off, so the
+        ; count is the prepare alone
+        B64_SET24 b64_reu, SLOT_TILESET0
+        jsr b64_load_tileset
+        B64_SET16 b64_cam_x, 1300*32
+        B64_SET16 b64_cam_y, 1000*32
+        jsr b64_redraw
+        lda #3*15
+        sta res_i
+        lda #8                  ; right
+        ldx #0
+        jsr scroll_once
+        lda #0                  ; down
+        ldx #8
+        jsr scroll_once
+        lda #8                  ; diagonal
+        ldx #8
+        jsr scroll_once
         lda #5
         sta VIC_BORDERCOLOR     ; green: done
         jmp test_done
 test_done:                      ; the test runner breaks here
         jmp test_done
+
+; scroll_once: A = dx, X = dy in pixels (a whole cell): time one prepare,
+; then apply it as the vertical blank would
+scroll_once:
+        jsr b64_move_camera
+        lda #100
+        jsr wait_line
+        jsr b64_bench_begin
+        jsr b64_scroll_prepare
+        jsr b64_bench_end
+        jsr store
+        jmp scr_vblank
 
 ; A = raster line to start on, X = 0: run the five sizes
 dma_series:

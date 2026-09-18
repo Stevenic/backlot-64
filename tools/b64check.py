@@ -133,14 +133,15 @@ def bench(R, tier, port):
     v = Vice("build/bench.prg", kib, image, "build/bench.lbl", port)
     try:
         v.run_to("test_done", timeout=120)
-        b = v.mem(0xE000, 0x30)
+        b = v.mem(0xE000, 0x3C)
     finally:
         v.close()
     flags, mb = b[0x2A], b[0x2B]
     R.check(f"tier{tier}.platform", mb == tier and bool(flags & 1) and bool(flags & 2) == (tier == 16) and not flags & 0x1C,
             f"flags ${flags:02X}, REU {mb} MB")
-    for i, (key, _, _) in enumerate(b64bench.TESTS):
-        R.measure(f"bench.{key}", int.from_bytes(b[3 * i:3 * i + 3], "little"))
+    for i, test in enumerate(b64bench.TESTS):
+        if test is not None:
+            R.measure(f"bench.{test[0]}", int.from_bytes(b[3 * i:3 * i + 3], "little"))
 
 
 def overlay(R, tier, port):
@@ -244,14 +245,41 @@ def showcase(R, tier, port):
 
 
 def scroller(R, port):
+    """The autodrive scroller: its screen and colour RAM always equal a full
+    redraw of the world at the camera, computed here from the world map and
+    the tileset; how many frames go without a callback; its worst frame."""
+    world = open("build/world.map", "rb").read()
+    ts = open("build/bellamar_day.bin", "rb").read()
+    mtchars = ts[0x800:0x1800]
     v = Vice("build/scroll-auto.prg", *TIERS[8], labels="build/scroll-auto.lbl", port=port)
     try:
-        v.frames(50)                            # past the first full-screen draw
+        v.frames(50)                            # past the first full draw
         v.poke(0x3D, bytes(3))                  # bench_max: measure the scroll, not the start
-        v.frames(800)                           # twice round the autodrive square
+        seq, wrong, checked, last = [], [], 0, -99
+        for f in range(800):                    # twice round the autodrive square
+            v.frames(1)
+            seq.append(v.word("auto_t"))
+            if f - last < 20 or v.mem(0x1B)[0]:  # about every 20 frames, when no work is pending
+                continue
+            last = f
+            front = 0x4400 if v.mem(0x1A)[0] else 0x4000
+            cx, cy = v.word(0x26), v.word(0x28)
+            screen, colour = v.mem(front, 920), v.mem(0xD800, 920)
+            for r in range(23):
+                for c in range(40):
+                    wx, wy = cx + c, cy + r
+                    mid = world[(wy >> 2) * 2048 + (wx >> 2)]
+                    code = mtchars[mid * 16 + (wy & 3) * 4 + (wx & 3)]
+                    k = r * 40 + c
+                    if screen[k] != code or (colour[k] & 15) != (code & 15):
+                        wrong.append((f, r, c))
+            checked += 1
         R.measure("scroll.worst_frame", int.from_bytes(v.mem(0x3D, 3), "little"))
     finally:
         v.close()
+    R.check("scroll.picture", checked >= 10 and not wrong,
+            f"{checked} frames compared with a full redraw of the world; {len(wrong)} cells wrong" + (f", first at frame, row, column {wrong[0]}" if wrong else ""))
+    R.measure("scroll.frames_dropped", sum(1 for a, b in zip(seq, seq[1:]) if a == b))
 
 
 def cutscene_ticks(R, port):

@@ -9,7 +9,7 @@ QUANT   = tools/b64quant.py tools/b64tileset.py tools/b64palette.py tools/b64for
 CFG     = b64.cfg
 INC     = -I include -I $(BUILD)
 
-ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_text.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s src/b64_pcm.s src/b64_uci.s src/b64_overlay.s src/b64_probe.s
+ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s src/b64_pcm.s src/b64_uci.s src/b64_overlay.s src/b64_probe.s
 ENGINE_OBJS = $(patsubst src/%.s,$(BUILD)/%.o,$(ENGINE_SRCS))
 # probe builds: the same sources assembled with -DB64_PROFILE into build/prof
 PBUILD  = $(BUILD)/prof
@@ -147,6 +147,9 @@ $(PBUILD)/%.o: examples/%/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
 # region starting that much later.  The plain build is what budgets hold.
 $(PBUILD)/b64prof.cfg: $(CFG) | $(PBUILD)
 	sed -e 's/start = $$080D, size = $$27F3/start = $$080D, size = $$2BF3/' -e 's/GAME:     start = $$3000, size = $$1000/GAME:     start = $$3400, size = $$0C00/' $(CFG) > $@
+
+$(PBUILD)/scroll-auto.o: examples/scroll/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
+	$(AS) -g -t c64 -DB64_PROFILE -D AUTODRIVE=1 $(INC) -o $@ $<
 
 # a probe build of any example: make build/prof/cutscene.prg
 $(PBUILD)/%.prg: $(PENGINE_OBJS) $(PBUILD)/%.o $(PBUILD)/b64prof.cfg

@@ -67,6 +67,10 @@ Every asset goes through a quantiser that enforces the VIC-II's real colour rule
 
 **What:** metatiles of 4 x 4 cells drawn on the canvas DSL in `b64tileset.py`, under the region's three shared colours. Core tiles never use shared colour 2. See `docs/ART.md` section 7 for the region palettes.
 
+**The colour budget.** A cell's colour is packed into its screen code (the low four bits), so each colour value has twelve codes. A tileset may use at most twelve characters that show a given cell colour; a multicolour character with no '11' pixel pairs never shows the cell colour and goes wherever there is room. The tool prints the count per colour value and stops, naming the colour, when one is over. Over means redraw: fewer distinct shapes in that colour, or move a material to a shared colour.
+
+**Format:** charset (2 KB) at +$0000, metatiles by row (4 KB) at +$0800, the same by column at +$1800, properties (256 bytes) at +$2800, padded to 12 KB.
+
 **Check:** the tool warns on dithers too far apart in luminance. Fix the art, do not silence the warning.
 
 ### World

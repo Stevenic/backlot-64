@@ -25,6 +25,14 @@ bench.vm_drive_71            6170   #  5868   83 cycles per opcode in the drive 
 bench.vm_add_65              6250   #  5952   92 cycles per ADD
 bench.asm_drive_64          14400   # 13712   the same drive step in assembly: 214 cycles
 
+# The scroller's prepare for one cell crossing, interrupts off, started
+# inside the display (roadmap step 6, 2026-09-18).  The diagonal is the
+# worst case and its limit is the target itself.  Before the fills work the
+# same crossings cost 4,609, 4,281 and 6,341.
+bench.scroll_right           4450   #  4218   shift, column, stash
+bench.scroll_down            4350   #  4124   shift, row, stash
+bench.scroll_diag            6000   #  5754   shift, column, row, stash: the target
+
 overlay.load_8k              9560   #  9097   an 8 KB code overlay into region A
 
 # The tick depends on the art: re-quantising the cruiser with the corrected
@@ -33,6 +41,10 @@ overlay.load_8k              9560   #  9097   an 8 KB code overlay into region A
 cutscene.tick_median         9350   #  8889   callback plus engine frame work, interrupts included
 cutscene.tick_worst         16500   # 15692   the same on a shimmer frame (every fourth); a frame is 19,656
 
-# Known to be over its target.  The target is 6,000 (PLAN.md section 3.1);
-# the fills of ROADMAP step 6 are the fix.  The limit holds the line until then.
-scroll.worst_frame          10900   # 10361   scroll prepare, worst frame of the autodrive square
+# The scroller in the autodrive example, interrupts included: the prepare's
+# worst frame, and frames with no callback in 800.  Frames drop because the
+# example's callback (traffic, the sprite sort, the debug numbers) plus the
+# prepare overruns on crossing frames; roadmap step 9 is the fix, and the
+# target is 0.  Before the fills work: 10,361 and 100.
+scroll.worst_frame           8150   #  7750   scroll prepare, worst frame of the autodrive square
+scroll.frames_dropped          95   #    89   frames without a callback, of 800

@@ -36,6 +36,8 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 **The showcase.** With the cruiser stopped and its lights on: each frame shows exactly one lamp, each lamp in its own colour at the offset the object file declares; the pattern changes every 8 frames; every frame relights at least 200 pixels, and none beyond the light's declared radius; the park is exact after the lights go off. At both tiers.
 
+**The scroller.** The autodrive example runs twice round its square. About every 20 frames, on a settled frame, its screen buffer and colour RAM are read and compared with a full redraw of the world at the camera, computed in Python from the world map and the tileset. The count of frames that go without a callback is budgeted too.
+
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
 
 | Measured | How |
@@ -44,7 +46,9 @@ A change is not done until `make check` passes. A change that moves a number in 
 | `bench.*` | `examples/bench`, read at `test_done` |
 | `overlay.load_8k` | `examples/overlay`, the first 8 KB load |
 | `cutscene.tick_*` | the emulator's own cycle counter in the plain build, from the callback to the end of the engine's frame work, interrupts included, over 160 frames of the drive |
+| `bench.scroll_*` | the benchmark program: one prepare for a crossing right, down and diagonally, interrupts off |
 | `scroll.worst_frame` | the autodrive scroller's own maximum, reset after the first full draw, over twice round its square |
+| `scroll.frames_dropped` | frames without a callback in the same 800 |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.
 

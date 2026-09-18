@@ -3,10 +3,20 @@
 
 A tileset is:
     charset      2048 bytes   192 scene cells + 64 font cells (192-255)
-    mtchars      4096 bytes   256 metatiles x 16 cell indices (4x4, row-major)
-    mtcols       4096 bytes   256 metatiles x 16 cell colours (bit 3 set = multicolour)
+    mtchars      4096 bytes   256 metatiles x 16 screen codes (4x4, row-major)
+    mtcolumns    4096 bytes   the same codes column-major, so a column fill
+                              reads each metatile's four cells in a run
     props         256 bytes   per-metatile properties
     (padded to 12 KB)
+
+A scene cell's colour is the low four bits of its screen code (bit 3 set =
+multicolour), so there is no colour table: the scroller writes colour RAM
+from the screen itself.  The packer assigns the codes.  Codes 0-191 give
+twelve per colour value, so a tileset may use at most twelve characters
+that show a given cell colour; a character that never shows the cell
+colour (no '11' pixel pairs in multicolour) fits any bucket of its mode.
+After Lasse Öörni (Cadaver), c64gameframework (macros.s), colour packed
+into the screen code.  As is.
 
 Metatiles are drawn on a 4x4-cell multicolour canvas with the same drawing
 primitives as the Priors-64 demos (tools/b64art.py), then deduped into the charset.
@@ -123,20 +133,61 @@ class Tileset:
         return idx
 
     def pack(self):
-        charset = bytearray()
-        for key in self.order:
-            charset += bytes(key)
-        charset += bytes(FONT_BASE * 8 - len(charset))
+        """Re-code the scene characters so every code's low four bits are
+        the colour its cells show, and build charset, metatiles and props."""
+        per_bucket = FONT_BASE // 16                # codes v, v+16, ... below the font: 12
+
+        def shows_cell_colour(ch, colour):
+            key = self.order[ch]
+            if colour >= 8:                         # multicolour: '11' pairs take the cell colour
+                return any(((b >> sh) & 3) == 3 for b in key for sh in (0, 2, 4, 6))
+            return any(key)                         # hires: every set pixel is the cell colour
+
+        pairs = sorted({(ch, col & 15) for cells, cols, _ in self.metatiles for ch, col in zip(cells, cols)})
+        fixed = [(ch, col) for ch, col in pairs if shows_cell_colour(ch, col)]
+        need = {}
+        for _, col in fixed:
+            need[col] = need.get(col, 0) + 1
+        over = {v: n for v, n in need.items() if n > per_bucket}
+        if over:
+            raise SystemExit(f"tileset {self.name}: colour values {over} each need more than {per_bucket} characters; "
+                             f"the colour is packed in the screen code (docs/PREPARE.md, tilesets)")
+        buckets = {v: [] for v in range(16)}        # colour value -> characters, in code order
+        placement = {}                              # (character, colour value) -> code
+
+        def place(ch, v):
+            if (ch, v) not in placement:
+                if len(buckets[v]) >= per_bucket:
+                    raise SystemExit(f"tileset {self.name}: colour value {v} is full ({per_bucket} characters)")
+                placement[(ch, v)] = v + 16 * len(buckets[v])
+                buckets[v].append(ch)
+            return placement[(ch, v)]
+
+        code_of = {}
+        for ch, col in fixed:                       # characters that show their colour have no choice
+            code_of[(ch, col)] = place(ch, col)
+        for ch, col in pairs:                       # the rest go wherever their mode has room
+            if (ch, col) in code_of:
+                continue
+            modes = range(8, 16) if col >= 8 else range(0, 8)
+            home = [v for v in modes if (ch, v) in placement]
+            v = home[0] if home else min(modes, key=lambda b: len(buckets[b]))
+            code_of[(ch, col)] = place(ch, v)
+        charset = bytearray(FONT_BASE * 8)
+        for (ch, v), code in placement.items():
+            charset[code * 8:code * 8 + 8] = bytes(self.order[ch])
         charset += self.font
         assert len(charset) == 2048
         mtchars = bytearray(4096)
-        mtcols = bytearray(4096)
+        mtcolumns = bytearray(4096)
         props = bytearray(256)
         for i, (cells, cols, p) in enumerate(self.metatiles):
-            mtchars[i * 16:(i + 1) * 16] = cells
-            mtcols[i * 16:(i + 1) * 16] = cols
+            codes = [code_of[(ch, col & 15)] for ch, col in zip(cells, cols)]
+            mtchars[i * 16:(i + 1) * 16] = bytes(codes)
+            mtcolumns[i * 16:(i + 1) * 16] = bytes(codes[r * 4 + c] for c in range(4) for r in range(4))
             props[i] = p
-        blob = charset + mtchars + mtcols + props
+        self.used = {v: len(b) for v, b in buckets.items() if b}
+        blob = charset + mtchars + mtcolumns + props
         blob += bytes(12 * 1024 - len(blob))
         return bytes(blob)
 
@@ -241,7 +292,8 @@ def main():
         data += bytes(4096 - len(data))
         with open(sp, "wb") as f:
             f.write(data)
-    print(f"tileset {name}: {len(ts.order)} scene cells, {len(ts.metatiles)} metatiles")
+    print(f"tileset {name}: {len(ts.order)} scene cells, {len(ts.metatiles)} metatiles; "
+          f"characters per colour value (at most {FONT_BASE // 16}): {ts.used}")
 
 
 if __name__ == "__main__":

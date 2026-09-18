@@ -94,6 +94,25 @@ The first message asked which C64 emulator is best. The answer, VICE's cycle-exa
 - **Frame rates.** Steven asked about locked frame rates. PAL refreshes at 50 Hz, so only 50, 25 and 16.7 lock cleanly. He chose logic at 25 Hz with motion at 50: the game ticks every second frame and the frame between shows every position at its midpoint. 16.7 Hz was ruled out for a driving game, and staggered AI updates were planned instead.
 - **An honest benchmark.** Asked whether the new multiplexer would be the state of the art, the answer was no, not by borrowing alone. It would match the best open game multiplexers. It can lead only where this engine is different, and whether it does will be measured against Cadaver's framework in the same harness rather than claimed.
 
+### 18 September, morning: Phase 2 begins with the fills
+
+The scroller missed its budget: 6,000 cycles for a cell crossing was the target and 10,361 the measurement. Before changing anything, the cost was measured with the emulator's own cycle counter, and that turned up something no check had looked for: the scroller example dropped a frame at every cell crossing, 100 frames in 800. The old budget measured only the scroller's preparation, not whether the frame held.
+
+- **Colour in the screen code.** The tileset tool now assigns character codes so each code's low four bits are the colour its cells show, twelve codes per colour. Every metatile of the example tileset was checked to render exactly as before. The metatile colour table disappeared, and 4 KB of RAM with it.
+- **One REU copy of the shown screen** serves as both the next shift's source and colour RAM's, so the vertical border does one DMA where it did two plus a loop.
+- **Faster fills.** Rows are unrolled per metatile. Columns read from a second copy of the library stored by column and write with unrolled stores. A column's metatile ids come from one-byte DMAs that reuse the REU's registers.
+
+| Cell crossing, interrupts off | Before | After |
+|---|---|---|
+| Right | 4,609 | 4,218 |
+| Down | 4,281 | 4,124 |
+| Diagonal, the worst case | 6,341 | 5,754 |
+| Vertical border's work | 3,109 | 1,119 |
+
+The new scroller was compared with the old one at every settled frame where both showed the same camera: 31 states, identical to the pixel. `make check` now also proves the scrolled screen and colour RAM equal a full redraw computed from the world map, on every push. The engine is about 500 bytes smaller than when Phase 2 began, partly from removing an old text routine nothing called.
+
+Dropped frames fell only from 100 to 89. The rest is the example's own per-frame work, its traffic, the sprite sort and its debug numbers, which is the next step's problem, and it is now a budgeted number rather than an unnoticed one.
+
 ---
 
 ## What went wrong, and what caught it
@@ -113,19 +132,22 @@ The first message asked which C64 emulator is best. The answer, VICE's cycle-exa
 | The first daytime art converted badly | The quantiser's damage report | The prompt was constrained to flat palette fills; damage fell from 5,606 to 2,055 |
 | CI timed out | The first CI run | Monitor timeouts scale on slower machines |
 | 6502 branches written past their 127-byte reach | The assembler | A rule in `CLAUDE.md` |
+| The scroller example dropped a frame at every cell crossing | Counting callbacks per frame at the start of Phase 2 | Now a budget in `make check`; roadmap step 9 |
+| Timings from the monitor's run-until-return were wrong | They contradicted the profiler | That command stops at the first return from any subroutine; timings now break at the caller's next instruction |
+| The scroller's profiling build runs one frame in four or five | The same comparison | Open; it is needed for step 9 |
 
 ---
 
-## Where it stands, 18 September 2026
+## Where it stands, 18 September 2026, after the fills
 
 | | |
 |---|---|
 | Elapsed | 14 September, 11:55 PM, to 18 September, 4:30 AM; about 105 requests from Steven |
-| Engine | 5,600 lines of 6502 assembly; 10,182 of its 10,227 resident bytes used |
+| Engine | 5,600 lines of 6502 assembly; 9,676 of its 10,227 resident bytes used |
 | Tools | 3,600 lines of Python: packers, quantisers, the VICE harness, the probe reader |
 | Docs | 1,850 lines, audited against primary sources |
-| Checks | 50, passing locally in under 30 seconds and on every push |
-| Scroller | worst frame 10,361 cycles against a 6,000 target; the fixes are Phase 2's first step |
+| Checks | 55, passing locally in under 30 seconds and on every push |
+| Scroller | worst cell crossing 5,754 cycles against a 6,000 target; the example still drops 89 frames in 800 |
 | Cutscene frame | 8,889 cycles typical, 15,692 on effect frames, of 19,656 |
 | Script VM | 82 to 118 cycles per opcode |
 | Not yet run on hardware | the C64 Ultimate tiers, which wait for the machine |
