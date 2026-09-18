@@ -77,6 +77,17 @@ class Vice:
                 time.sleep(0.2)
         self._frame_watch = None
         self.cmd("r")                           # the first command stops the machine and brings the prompt
+        self._drain()                           # on a slow machine the stop can print a second prompt: a later
+                                                # command would read it as its reply (CI, 2026-09-18)
+
+    def _drain(self, quiet=0.5):
+        """Discard output until the monitor has been quiet for a moment."""
+        self.sock.settimeout(quiet * SCALE)
+        try:
+            while self.sock.recv(65536):
+                pass
+        except socket.timeout:
+            pass
 
     def _read(self, timeout):
         timeout *= SCALE
@@ -123,6 +134,12 @@ class Vice:
 
     def _checkpoint(self, text):
         m = re.search(r"(?:BREAK|WATCH|TRACE): (\d+)", text)
+        if not m:
+            try:
+                text += self._read(5)           # a stale prompt came first: the reply follows it
+            except ViceError:
+                pass
+            m = re.search(r"(?:BREAK|WATCH|TRACE): (\d+)", text)
         if not m:
             raise ViceError(f"could not set a checkpoint: {text!r}")
         return int(m.group(1))
