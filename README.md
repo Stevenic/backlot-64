@@ -4,7 +4,7 @@ A rendering and data engine for the Commodore 64 with an REU, built for [GTA-64]
 
 Two halves. The rendering half draws a multicolour character-mode world of up to 2048x2048 metatiles, scrolls it in 8 directions with DMA-assisted screen shifts, multiplexes 24 sprites, and handles raster splits, charset animation, text, and transitions. The data half treats the REU as the program's real memory and the 64 KB as a cache: it streams world data and assets, runs code overlays, and keeps a page cache so scripts and text execute from expansion memory. On top of both sits a module system: physics, AI, pathfinding, collision, scripting, and sound come in tiers, all in assembly, and a game picks the tiers it wants in a manifest that the build checks against the machine's RAM and frame budget. Everything per-frame is hand-written 6502. One build scales from a stock C64 with an 8 MB REU to the C64 Ultimate (16 MB, turbo CPU, PCM sampler, files into the REU), probing the machine at boot; see `docs/ULTIMATE.md`.
 
-See [docs/PLAN.md](docs/PLAN.md) for principles, budgets, memory map, API, data formats, and milestones, and [docs/PREPARE.md](docs/PREPARE.md) for how to prepare every kind of data the engine consumes. [docs/PRIOR-ART.md](docs/PRIOR-ART.md) credits the C64 projects whose techniques this engine borrows.
+See [docs/PLAN.md](docs/PLAN.md) for principles, budgets, memory map, API, data formats, and milestones, and [docs/PREPARE.md](docs/PREPARE.md) for how to prepare every kind of data the engine consumes. [docs/ROADMAP.md](docs/ROADMAP.md) is where it is going, [docs/PRIOR-ART.md](docs/PRIOR-ART.md) is what it learned from other C64 engines, and [CREDITS.md](CREDITS.md) names everyone whose work it stands on.
 
 ## Requirements
 

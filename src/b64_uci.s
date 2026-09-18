@@ -4,6 +4,9 @@
 ; storage straight into the REU, which is how a game fills REU slots at
 ; run time on real hardware (mission packs, regions, saved games).
 ;
+; Registers from Gideon Zweijtzer's Command Interface documentation; the
+; DOS command bytes and the 3.15 unlock sequence as read in xahmol's
+; UltimateDemo2026 library (see CREDITS.md).
 ; Registers ($DF1C-$DF1F, firmware 3.15+ unlock at $D038/$D036):
 ;   $DF1C write control: bit0 PUSH_CMD, bit1 DATA_ACC, bit2 ABORT, bit3 CLR_ERR
 ;   $DF1C read  status:  bit0 CMD_BUSY, bit1 DATA_ACC, bit2 ABORT_P, bit3 ERROR,

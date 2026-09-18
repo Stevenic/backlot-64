@@ -3,7 +3,9 @@
 ; by DMA inside the cartridge, so playing one costs the CPU a dozen
 ; register writes and nothing per frame.
 ;
-; Register map (Ultimate Audio Register API v0.2): channel n at
+; Register map from Gideon Zweijtzer's Ultimate Audio Register API v0.2; the
+; 6-bit volume and channel layout confirmed against xahmol's UltimateDemo2026
+; (see CREDITS.md).  Channel n at
 ; $DF20 + n*32, write-only, multi-byte fields big-endian:
 ;   $00 control: bit0 gate, bit1 repeat, bit2 irq, bits 5-4 mode
 ;                (00 = 8-bit PCM, 01 = 16-bit little-endian), bit6 interleave

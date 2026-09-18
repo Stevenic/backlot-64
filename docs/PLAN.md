@@ -585,7 +585,7 @@ Each milestone ships a runnable program under `build/` and a measured benchmark.
 | E15 | **Samples on stock hardware** | REU-streamed 4-bit sample playback on a CIA timer NMI with a mixing budget, for machines without Ultimate Audio. |
 | E9 | **C128** | Platform layer: MMU setup, far-call trampoline, 2 MHz border switch, resident overlays in bank 1, VDC console. GTA-128 boots in `x128` from the same REU image as GTA-64. |
 
-GTA-64's Milestone 1 through 5 map onto E1 through E5. GTA-64 begins using the engine at E1. GTA-128 is the same game built for the C128 platform at E9, with its own manifest and no other differences.
+The forward sequence, phased and with the ideas' sources, is `docs/ROADMAP.md`; this table records what has shipped. GTA-64's Milestone 1 through 5 map onto E1 through E5. GTA-64 begins using the engine at E1. GTA-128 is the same game built for the C128 platform at E9, with its own manifest and no other differences.
 
 ---
 

@@ -12,6 +12,9 @@
 ; boundary; for that one instruction vm_page points at the buffer, Y counts
 ; from 0, and the start offset is added back when the instruction ends.
 ;
+; The push-and-return dispatch is the SWEET16 pattern (Wozniak); the
+; page-relative fetch is the Å-machine's idea (Åkesson).  See CREDITS.md.
+;
 ; Convention inside an op: Y = offset lo, past the opcode.  Read operands
 ; with FETCH.  Ops that need Y for something else save it with sty vm_pc
 ; and reload it before jumping to vm_next.  An op ends with jmp vm_next,

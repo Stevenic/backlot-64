@@ -6,7 +6,11 @@
 ; straight into the REU).  Nothing per-frame ever depends on an extra;
 ; extras add headroom and features, never correctness.
 ;
-; Register facts (from the Ultimate documentation):
+; Register facts from Gideon Zweijtzer's Ultimate documentation (turbo mode
+; settings, Ultimate Audio Register API v0.2, Command Interface).  The audio
+; probe follows 6510nl's detectaudio routine from ModPlayer_16k as read in
+; xahmol's UltimateDemo2026.  See CREDITS.md.
+; Register facts:
 ;   $D031  U64 turbo control: bits 0-3 speed index 0-15 (1 MHz .. 48/64 MHz),
 ;          bit 7 = 1 suppresses badline stalls.  Reads $FF when absent.
 ;   $D030  bit 0: turbo enable (C128-style), used with $D031.
