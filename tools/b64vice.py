@@ -21,6 +21,9 @@ import time
 from b64png import read_png
 
 PROMPT = re.compile(rb"\(C:\$[0-9a-fA-F]{4}\) $")
+# every timeout is multiplied by this: a shared CI runner emulates several
+# times slower than a desk machine (B64_VICE_TIMEOUT_SCALE=6 in the workflow)
+SCALE = float(os.environ.get("B64_VICE_TIMEOUT_SCALE", "1"))
 FRAME = 0x10                                    # b64_frame, stored once per frame by the engine IRQ
 
 
@@ -62,7 +65,7 @@ class Vice:
 
     def _start(self, args):
         self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        deadline = time.time() + 20
+        deadline = time.time() + 20 * SCALE
         while True:
             try:
                 self.sock = socket.create_connection(("127.0.0.1", self.port), timeout=2)
@@ -75,6 +78,7 @@ class Vice:
         self.cmd("r")                           # the first command stops the machine and brings the prompt
 
     def _read(self, timeout):
+        timeout *= SCALE
         buf, deadline = b"", time.time() + timeout
         while not PROMPT.search(buf):
             left = deadline - time.time()
@@ -134,7 +138,7 @@ class Vice:
             self.cmd(f"del {n:x}")
         return out
 
-    def frames(self, count=1, timeout=60):
+    def frames(self, count=1, timeout=None):
         """Advance count frames: run to the count-th store of the frame counter."""
         if self._frame_watch is None:
             self._frame_watch = self._checkpoint(self.cmd(f"watch store {FRAME:04x}"))
@@ -142,7 +146,7 @@ class Vice:
             self.cmd(f"enable {self._frame_watch:x}")
         if count > 1:
             self.cmd(f"ignore {self._frame_watch:x} {count - 1:x}")
-        self.cmd("x", timeout)
+        self.cmd("x", timeout or 30 + count / 10)
         self.cmd(f"disable {self._frame_watch:x}")
 
     def poke(self, a, data):
@@ -156,7 +160,7 @@ class Vice:
         if os.path.exists(path):
             os.unlink(path)
         self.cmd(f'screenshot "{path}" 2')
-        deadline = time.time() + 5
+        deadline = time.time() + 5 * SCALE
         while not os.path.exists(path) or os.path.getsize(path) == 0:
             if time.time() > deadline:
                 raise ViceError(f"no screenshot at {path}")

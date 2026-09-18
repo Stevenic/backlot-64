@@ -8,7 +8,7 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 `tools/b64vice.py` drives x64sc through its remote monitor. Every command waits for the monitor's prompt instead of sleeping, the emulator runs in warp, and the tests stop the machine on labels from the program's label file (`-Ln`) or on stores to the frame counter, so a run is frame-exact and the same every time. Screenshots are read by `tools/b64png.py`, which has no dependencies.
 
-`tools/b64check.py` runs the two tiers and the single-tier tests in parallel, on separate monitor ports.
+`tools/b64check.py` runs the two tiers and the single-tier tests in parallel, on separate monitor ports. A shared CI runner emulates several times slower than a desk machine, so every monitor timeout is multiplied by `B64_VICE_TIMEOUT_SCALE` (the workflow sets 6). A timeout is a failure, never a hang.
 
 | Tier | REU | Image |
 |---|---|---|
