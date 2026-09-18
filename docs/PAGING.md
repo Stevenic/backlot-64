@@ -10,10 +10,10 @@ The one idea underneath all of them: a byte is in RAM because it is needed this 
 
 | Fact | Value |
 |---|---|
-| Frame | 19,656 cycles, 50 per second |
+| Frame | 19,656 cycles, 50.12 per second |
 | Border (VIC not drawing) | 112 lines, 7,056 cycles |
 | DMA rate | 1 byte per cycle, about 105 cycles setup (measured) |
-| DMA in the displayed area | about 93 percent of full rate (badlines, measured) |
+| DMA in the displayed area | about 93 percent of full rate (badlines, measured in VICE; lower again with sprites on the lines) |
 | Largest change to the picture per frame, invisibly | about 6 KB, in the border |
 | 256-byte page | 361 cycles (measured) |
 | 8 KB overlay | 8,423 cycles in the border, 9,053 in the display (measured) |
@@ -31,7 +31,7 @@ Two consequences. Anything that touches the picture moves in the border, and the
 
 **How:** the visible rows or columns are resident, plus one row or column of lookahead past each edge. A scroll step shifts the window (in the border) and fetches the next row past the edge, which has a whole frame to land before the step that shows it. A jump to an arbitrary position fetches the whole window under one blanked frame.
 
-**Cost:** per step, one fetch the size of a row: 80 bytes and 140 cycles for a 40-column list row, 23 cells for a playfield column. The resident part is the window plus two rows. The list behind it can be as long as the REU.
+**Cost:** per step, one fetch the size of a row: 80 bytes and about 185 cycles for a 40-column list row (105 of setup plus 80), 23 cells for a playfield column. The resident part is the window plus two rows. The list behind it can be as long as the REU.
 
 **Rule:** a step is at most one row per frame, because the lookahead is one row. Faster scrolling means deeper lookahead, which is a manifest number.
 
@@ -53,7 +53,7 @@ The playfield scroller (E1) is this strategy with metatiles: the screen matrix s
 
 **How:** the engine notices the need and fetches without a request. The multiplexer fetches a 64-byte frame into a slot when the frame a sprite wants is not the one the slot holds; a sprite that keeps its frame costs nothing. Charset animation (water, neon, traffic lights) is 8-byte characters written into the charset each frame from the REU, with no resident frame tables.
 
-**Cost:** 125 cycles per sprite frame that changes; 70 cycles per animated character. All 24 virtual sprites can change frame every frame inside the border budget.
+**Cost:** 169 cycles per sprite frame that changes (measured); about 113 per animated character (105 of setup plus 8). All 24 virtual sprites can change frame every frame inside the border budget.
 
 **Prefetch:** when a sector record loads, the sprite frames its entities will need are streamed into free slots before the entities are visible, so a busy street costs nothing on its first visible frame.
 
@@ -79,7 +79,7 @@ The playfield scroller (E1) is this strategy with metatiles: the screen matrix s
 
 **For:** data read sequentially in small pieces where the reader does not know in advance which bytes: p-code, dialogue text, path tables, stat records, mission flags.
 
-**How (built):** eight 256-byte pages at $C100 with a linear tag lookup, a one-entry fast path for the page answered last, and round-robin replacement (`src/b64_page.s`, 139 bytes). A hit is a compare; a miss is one 361-cycle DMA. The VM reads p-code through it: a script is assembled at offset 0 (`script.cfg`) and packed as a slot; a thread's position is a 16-bit offset from the script base, so operands stay 16-bit and a script can be 64 KB. The running thread holds a pointer to the cached page of its offset, so a fetch is one indirect load; an instruction that starts within nine bytes of a page end is copied into a small buffer that spans the boundary. Jumps within a page skip the lookup. A loop that spans two pages settles into the cache and never misses again. Measured: 116 to 147 cycles per opcode (`MEMORY.md` section 6).
+**How (built):** eight 256-byte pages at $C100 with a linear tag lookup, a one-entry fast path for the page answered last, and round-robin replacement (`src/b64_page.s`, 139 bytes). A hit is a compare; a miss is one 361-cycle DMA. The VM reads p-code through it: a script is assembled at offset 0 (`script.cfg`) and packed as a slot; a thread's position is a 16-bit offset from the script base, so operands stay 16-bit and a script can be 64 KB. The running thread holds a pointer to the cached page of its offset, so a fetch is one indirect load; an instruction that starts within nine bytes of a page end is copied into a small buffer that spans the boundary. Jumps within a page skip the lookup. A loop that spans two pages settles into the cache and never misses again. Measured: 82 to 118 cycles per opcode (`MEMORY.md` section 6).
 
 **Cost:** 2 KB resident for the cache, about 300 bytes of code. A miss is 361 cycles; the per-frame script budget (1,500 cycles) absorbs about four misses a frame, and a warm cache misses far less. The page-relative fetch is also what makes the VM fast: see the measurements in `MEMORY.md` section 6.
 
@@ -91,7 +91,7 @@ The playfield scroller (E1) is this strategy with metatiles: the screen matrix s
 
 **How:** the packer builds one REU slot holding the screen's overlay code, its screen data, its text and its font. Opening the screen is one 8 KB DMA into an overlay region under a blanked frame; closing it is forgetting it. Nothing about any screen is resident while it is closed. A scroll region inside the screen uses 2.1; its records use 2.5.
 
-**Cost:** 8.4 ms to open, zero per frame, zero resident when closed.
+**Cost:** about 9 ms to open (9,013 cycles measured), zero per frame, zero resident when closed.
 
 **Built (loader):** `b64_overlay_load` and `tools/b64overlay.py`; `examples/overlay` is the proof. Measured 9,013 cycles for an 8 KB load into region A. The packaging of screen data and text with the code is the part still open.
 
@@ -144,7 +144,7 @@ Every strategy shares three properties: the record is a fixed size at a computed
 - **Anything the interrupt runs.** The dispatcher, the vertical-blank work, the sprite chain, the raster splits, the DMA primitives, the page-cache lookup. A miss inside an interrupt is a missed raster line, a visible tear. The code that pages is never paged.
 - **What the VIC is showing this frame.** The active screen, the charset, colour RAM, the sprite slots of sprites on screen, the metatile rows the scroller is filling from. They change only in the border, and the border moves about 6 KB.
 - **Code, in place.** The 6502 cannot execute from the REU; every byte of code that runs was copied in first, so an overlay is only ever whole.
-- **The 4 KB under the I/O window.** DMA sees the CPU's memory map, and the REU registers live in that window.
+- **The 4 KB under the I/O window**, in practice. An immediate DMA cannot reach it: the REU sees the CPU's memory map and its registers live in that window. It is reachable with the deferred trigger (command bit 4 clear, I/O banked out through $01, then any write to $FF00 starts the transfer; Codebase64, "REU Programming", Using All C64 Memory). The engine does not use it, so it belongs with what should not be paged rather than what cannot.
 - **Zero page, the stack, the vectors.**
 
 ## 5. What should not be paged

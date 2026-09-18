@@ -125,6 +125,7 @@ b64_init:
         sta irq_line
         jsr spr_slots_reset
         jsr b64_page_flush
+        jsr b64_boot_check      ; no REU, no image or the wrong image: halt with the reason in the border
         jsr b64_plat_probe
         PROBE_CALL probe_init
         lda #0

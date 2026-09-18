@@ -12,9 +12,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, "..", "..", "Priors-64", "tools"))
 from b64palette import RGB, write_png  # noqa: E402
-from mkdemo import CAR_M_UP, FONT  # noqa: E402
+from b64art import CAR_M_UP, FONT  # noqa: E402
 
 BLACK, WHITE, RED, CYAN, PURPLE, GREEN, BLUE, YELLOW = range(8)
 ORANGE, BROWN, PINK, DGRAY, MGRAY, LGREEN, LBLUE, LGRAY = range(8, 16)

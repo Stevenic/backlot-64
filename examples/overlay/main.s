@@ -19,12 +19,7 @@
 .segment "GAME"
 game_main:
         jsr b64_init
-        jsr b64_reu_present
-        bcs :+
-        lda #2
-        sta VIC_BORDERCOLOR
-@halt:  jmp @halt
-:       B64_SET24 b64_reu, SLOT_TILESET0
+        B64_SET24 b64_reu, SLOT_TILESET0
         jsr b64_load_tileset    ; the font
         jsr b64_overlay_reset
         lda #0
@@ -74,4 +69,6 @@ game_main:
         ldx #>frame
         jsr b64_set_callback
         jmp b64_run
-frame:  rts
+frame:
+test_done:                      ; the test runner breaks here: every result is in place
+        rts

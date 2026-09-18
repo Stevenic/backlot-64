@@ -4,6 +4,8 @@ X64     = x64sc
 PY      = python3
 
 BUILD   = build
+# the quantiser and the modules it imports: a change to the palette or the luma table rebuilds the art
+QUANT   = tools/b64quant.py tools/b64tileset.py tools/b64palette.py tools/b64formats.py tools/b64art.py
 CFG     = b64.cfg
 INC     = -I include -I $(BUILD)
 
@@ -26,7 +28,7 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll shot-scroll palette clean
+.PHONY: all assets run-scroll shot-scroll palette clean check bench
 
 all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(REU)
 
@@ -35,29 +37,29 @@ $(BUILD):
 
 # ---------------------------------------------------------------------------
 # assets -> REU image + slots.inc
-$(BUILD)/vice_day.bin $(BUILD)/vice_day.inc $(BUILD)/sprites0.spr: tools/b64tileset.py | $(BUILD)
-	$(PY) tools/b64tileset.py vice_day $(BUILD)/vice_day.bin --sprites $(BUILD)/sprites0.spr
+$(BUILD)/bellamar_day.bin $(BUILD)/bellamar_day.inc $(BUILD)/sprites0.spr: tools/b64tileset.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64tileset.py bellamar_day $(BUILD)/bellamar_day.bin --sprites $(BUILD)/sprites0.spr
 
 $(BUILD)/world.map $(BUILD)/world.reg: tools/b64world.py tools/b64tileset.py | $(BUILD)
-	$(PY) tools/b64world.py vice_test $(BUILD)/world.map $(BUILD)/world.reg
+	$(PY) tools/b64world.py bellamar_test $(BUILD)/world.map $(BUILD)/world.reg
 
 # cutscene assets from generated art (images/) through the quantiser
 CUT_SET = $(wildcard images/night-set.png)
 ifeq ($(CUT_SET),)
 CUT_SET = images/night-still.png
 endif
-$(BUILD)/night.still: $(CUT_SET) tools/b64quant.py | $(BUILD)
+$(BUILD)/night.still: $(CUT_SET) $(QUANT) | $(BUILD)
 	$(PY) tools/b64quant.py still $(CUT_SET) $(BUILD)/formats/night-set.png --bin=$@ --shimmer-from=17
 
-$(BUILD)/cruiser.grid: images/cruiser-side.png tools/b64quant.py | $(BUILD)
+$(BUILD)/cruiser.grid: images/cruiser-side.png $(QUANT) | $(BUILD)
 	$(PY) tools/b64quant.py sprites images/cruiser-side.png $(BUILD)/formats/cruiser-grid.png 4 2 --colours=black,white,blue --bin=$@
 
-$(BUILD)/cruiser.bblock: images/cruiser-side.png tools/b64quant.py | $(BUILD)
+$(BUILD)/cruiser.bblock: images/cruiser-side.png $(QUANT) | $(BUILD)
 	$(PY) tools/b64quant.py bblock images/cruiser-side.png $(BUILD)/formats/cruiser-bblock.png 12 6 --bg=black --bin=$@
 
 # the cruiser as an object: sprite grid + block cut from one master, block composited
 # over the night set at its parking cell so the park is seamless
-$(BUILD)/cruiser.b64o: images/cruiser-side.png $(BUILD)/night.still tools/b64object.py tools/b64quant.py | $(BUILD)
+$(BUILD)/cruiser.b64o: images/cruiser-side.png $(BUILD)/night.still tools/b64object.py $(QUANT) | $(BUILD)
 	$(PY) tools/b64object.py images/cruiser-side.png $@ 4 2 --colours=black,white,blue --key=black,dgray --shadow --wheels=auto --still=$(BUILD)/night.still --at=27,14 --preview=$(BUILD)/formats/cruiser-object.png --patch-still=$(BUILD)/night-parked.still "--lights=40,-6,11,1:2/8,0/8;52,-6,11,1:0/8,6/8"
 
 # the set with the parking cells pre-reduced is what the scene loads
@@ -71,7 +73,7 @@ $(BUILD)/lamp.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/vice_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -80,13 +82,13 @@ $(BUILD)/scene.bin: examples/cutscene/scene.s include/b64.inc $(BUILD)/slots.inc
 	$(LD) -C script.cfg -o $@ $(BUILD)/scene.o -Ln $(BUILD)/scene.lbl
 
 # the lighting showcase: a day set, its dusk states, strobe states for the night set, and its script
-$(BUILD)/day.still: images/day-set.png tools/b64quant.py | $(BUILD)
+$(BUILD)/day.still: images/day-set.png $(QUANT) | $(BUILD)
 	$(PY) tools/b64quant.py still images/day-set.png $(BUILD)/formats/day-set.png --bin=$@
 
-$(BUILD)/daylight.bin: $(BUILD)/day.still tools/b64light.py
+$(BUILD)/daylight.bin: $(BUILD)/day.still tools/b64light.py tools/b64palette.py
 	$(PY) tools/b64light.py $(BUILD)/day.still $@ dusk --steps 32
 
-$(BUILD)/nightlight.bin: $(BUILD)/night-parked.still $(BUILD)/cruiser.b64o tools/b64light.py
+$(BUILD)/nightlight.bin: $(BUILD)/night-parked.still $(BUILD)/cruiser.b64o tools/b64light.py tools/b64palette.py
 	$(PY) tools/b64light.py $(BUILD)/night-parked.still $@ object $(BUILD)/cruiser.b64o --x0 24 --xstep 8 --npos 40 --y 162
 
 $(BUILD)/show.bin: examples/showcase/scene.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
@@ -94,7 +96,7 @@ $(BUILD)/show.bin: examples/showcase/scene.s include/b64.inc $(BUILD)/slots.inc 
 	$(LD) -C script.cfg -o $@ $(BUILD)/show.o -Ln $(BUILD)/show.lbl
 
 $(BUILD)/showcase.o: examples/showcase/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
-	$(AS) -t c64 $(INC) -o $@ $<
+	$(AS) -g -t c64 $(INC) -o $@ $<
 
 $(BUILD)/showcase.prg: $(ENGINE_OBJS) $(BUILD)/showcase.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/showcase.o -m $(BUILD)/showcase.map -Ln $(BUILD)/showcase.lbl
@@ -109,7 +111,7 @@ $(BUILD)/benchscripts.bin: examples/bench/scripts.s include/b64.inc $(BUILD)/slo
 # code overlays: assembled for the window, linked against the resident
 # program's map so they can call engine routines, packed as slots
 $(BUILD)/overlay.o: examples/overlay/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
-	$(AS) -t c64 $(INC) -o $@ $<
+	$(AS) -g -t c64 $(INC) -o $@ $<
 
 $(BUILD)/overlay.prg: $(ENGINE_OBJS) $(BUILD)/overlay.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/overlay.o -m $(BUILD)/overlay.map -Ln $(BUILD)/overlay.lbl
@@ -140,9 +142,15 @@ $(PBUILD)/%.o: src/%.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
 $(PBUILD)/%.o: examples/%/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
 	$(AS) -g -t c64 -DB64_PROFILE $(INC) -o $@ $<
 
+# the probe and its hooks do not fit the 10 KB engine area, and should not
+# have to: profile builds link with the area 1 KB larger and the game
+# region starting that much later.  The plain build is what budgets hold.
+$(PBUILD)/b64prof.cfg: $(CFG) | $(PBUILD)
+	sed -e 's/start = $$080D, size = $$27F3/start = $$080D, size = $$2BF3/' -e 's/GAME:     start = $$3000, size = $$1000/GAME:     start = $$3400, size = $$0C00/' $(CFG) > $@
+
 # a probe build of any example: make build/prof/cutscene.prg
-$(PBUILD)/%.prg: $(PENGINE_OBJS) $(PBUILD)/%.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(PBUILD)/b64_core.o $(filter-out $(PBUILD)/b64_core.o,$(PENGINE_OBJS)) $(PBUILD)/$*.o -Ln $(PBUILD)/$*.lbl
+$(PBUILD)/%.prg: $(PENGINE_OBJS) $(PBUILD)/%.o $(PBUILD)/b64prof.cfg
+	$(LD) -C $(PBUILD)/b64prof.cfg -o $@ $(PBUILD)/b64_core.o $(filter-out $(PBUILD)/b64_core.o,$(PENGINE_OBJS)) $(PBUILD)/$*.o -Ln $(PBUILD)/$*.lbl
 
 # profile an example in VICE for a few seconds and print the report
 probe-%: $(PBUILD)/%.prg $(REU) $(REU8)
@@ -150,28 +158,32 @@ probe-%: $(PBUILD)/%.prg $(REU) $(REU8)
 
 # example
 $(BUILD)/scroll.o: examples/scroll/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
-	$(AS) -t c64 $(INC) -o $@ $<
+	$(AS) -g -t c64 $(INC) -o $@ $<
 
 $(BUILD)/scroll-auto.o: examples/scroll/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
-	$(AS) -t c64 $(INC) -D AUTODRIVE=1 -o $@ $<
+	$(AS) -g -t c64 $(INC) -D AUTODRIVE=1 -o $@ $<
 
 $(BUILD)/scroll.prg: $(ENGINE_OBJS) $(BUILD)/scroll.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/scroll.o -m $(BUILD)/scroll.map
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/scroll.o -m $(BUILD)/scroll.map -Ln $(BUILD)/scroll.lbl
 
 $(BUILD)/scroll-auto.prg: $(ENGINE_OBJS) $(BUILD)/scroll-auto.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/scroll-auto.o
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/scroll-auto.o -Ln $(BUILD)/scroll-auto.lbl
 
 $(BUILD)/cutscene.o: examples/cutscene/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
-	$(AS) -t c64 $(INC) -o $@ $<
+	$(AS) -g -t c64 $(INC) -o $@ $<
 
 $(BUILD)/cutscene.prg: $(ENGINE_OBJS) $(BUILD)/cutscene.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/cutscene.o -m $(BUILD)/cutscene.map -Ln $(BUILD)/cutscene.lbl
 
 $(BUILD)/bench.o: examples/bench/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
-	$(AS) -t c64 -I include -I $(BUILD) -o $@ $<
+	$(AS) -g -t c64 -I include -I $(BUILD) -o $@ $<
 
 $(BUILD)/bench.prg: $(ENGINE_OBJS) $(BUILD)/bench.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/bench.o -m $(BUILD)/bench.map
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/bench.o -m $(BUILD)/bench.map -Ln $(BUILD)/bench.lbl
+
+# everything the engine claims, proven in VICE at both REU tiers (docs/CHECK.md)
+check: all $(BUILD)/bench.prg $(REU8) $(PBUILD)/cutscene.prg
+	$(PY) tools/b64check.py $(CHECKFLAGS)
 
 bench: $(BUILD)/bench.prg $(REU) $(REU8)
 	$(PY) tools/b64bench.py $(REUIMG) $(REUSIZE)

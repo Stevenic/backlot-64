@@ -1,0 +1,30 @@
+# make check on every push: the engine built from source and art, then run
+# in VICE at both REU tiers (docs/CHECK.md).  macOS, because the quantiser
+# resamples art with sips.
+name: check
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          brew install cc65 vice
+          ca65 --version
+          x64sc --version 2>&1 | head -1 || true
+      - name: Build
+        run: make all build/bench.prg build/world8.reu build/prof/cutscene.prg
+      - name: Check
+        run: make check CHECKFLAGS=--keep
+      - name: Frames from a failed check
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-frames
+          path: build/check
+          if-no-files-found: ignore

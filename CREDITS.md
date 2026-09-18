@@ -8,7 +8,7 @@ Details and rankings are in `docs/PRIOR-ART.md`. Each adopted technique also car
 
 - **Lasse Öörni (Cadaver)**, c64gameframework (MIT) and the rants at cadaver.github.io: colour packed into the screen code for one-lookup redraws, persistent sprite order sorted only when the count changes, grouped sprite IRQs with a count-aware advance and direct fall-through when late, ninth-sprite rejection, the two-frame sprite-cache guard, two-frame logic with interpolation, the re-entrant frame-update IRQ.
 - **Linus Åkesson**, the Å-machine 6502 engine: the zero-page fetch through a self-modified page byte, page-aligned `jmp (table)` dispatch with pre-doubled opcodes, per-byte page wrap, the page table with second-chance eviction and a pinned current page, operand-type bits in the operand, short relative branches.
-- **Honza Slesinger**, DOOM for the C64 Ultimate (CC BY-NC-SA 4.0): the measurement that REU DMA costs one microsecond per byte at every CPU speed and the CPU-copy consequence on turbo, the SID register stream, header-first two-stage fetches in power-of-two slots, the self-describing REU image header with boot cross-checks, the millisecond clock and frame histogram, the turbo and Ultimate Audio recipes, and the finding that VICE boots an empty REU when the image size does not match the unit.
+- **Honza Slesinger**, DOOM for the C64 Ultimate (CC BY-NC-SA 4.0): the measurement that REU DMA costs one microsecond per byte at every CPU speed and the CPU-copy consequence on turbo, the measurement that the CIA timers keep their 1 MHz clock under turbo, the SID register stream, header-first two-stage fetches in power-of-two slots, the self-describing REU image header with boot cross-checks, the millisecond clock and frame histogram, the turbo and Ultimate Audio recipes, and the finding that VICE boots an empty REU when the image size does not match the unit.
 - **Michael Steil** (pagetable.com) and the **ScummVM** project, for SCUMM v0 as used in Maniac Mansion: freeze and override for cutscenes, the deferred sentence queue as the model for event-driven entity threads, the script slot fields, bitvars, per-script locals.
 - **hhprg**, C64Engine (MIT): layer-aware hardware sprite allocation, difference-list colour shifts, the priority task ring, flip-bit virtual characters (considered, not taken).
 - **Markus Leissa**, c64engine (GPL-3.0, ideas only): Y-order sprite thinning, fill budgets across frames, the AGSP/VSP analysis (considered, not taken).
@@ -28,9 +28,14 @@ Details and rankings are in `docs/PRIOR-ART.md`. Each adopted technique also car
 ## Hardware and platform references
 
 - **Christian Bauer**, "The MOS 6567/6569 video controller (VIC-II) and its application in the Commodore 64": badlines, sprite DMA, the timing of every VIC register. The docs audit in the roadmap is against this text.
-- **Codebase64** (codebase64.org): the community wiki of C64 programming idioms.
+- **Codebase64** (codebase.c64.org): the community wiki of C64 programming idioms; its "REU Programming" and "REU registers" pages (Richard Hable, Marko Mäkelä) are the source for the REU facts in the docs, and "Seriously fast multiplication" for the table multiply.
 - **Commodore 64 Programmer's Reference Guide** and **Sheldon Leemon, "Mapping the Commodore 64"**: the memory map and the register descriptions.
-- **Philip "Pepto" Timmermann**: the VIC-II colour measurements used for the palette and the luminance ladder in `docs/ART.md`.
+- **Philip "Pepto" Timmermann**: the VIC-II colour analysis (pepto.de/projects/colorvic): the 2001 palette the art uses, and the nine-level luma order the tools' `LUMA` table follows, and the PAL artefacts behind the blending rules in `docs/ART.md`.
+- **Ottis Cowper, "Mapping the Commodore 128"**: the MMU, the REC and fast mode, for the C128 platform notes in `docs/PLAN.md`.
+- **The 1541 Ultimate documentation** (1541u-documentation.readthedocs.io) and **the Ultimate Audio register specification v0.2**: the turbo registers, the command interface and the sampler.
+- **JC-000**, c64-https (PR 205): a hardware measurement that the CIA timers run in real time on an Ultimate 64 Elite under turbo.
+- **Linus Åkesson**, "Safe VSP": why VSP scrolling is not on the roadmap.
+- **ilesj**, "Old VIC-II colors and color blending": vertical blending of equal-luma colours on PAL.
 - **The VICE team**: the emulator every number in this repository was measured on, its remote monitor, and its cycle-exact `x64sc`.
 - **The cc65 project**: `ca65` and `ld65`.
 - **Commodore Business Machines**: the machine, and the 1750 REU whose DMA controller this engine treats as its memory bus.

@@ -5,6 +5,7 @@
 ; A length of 0 means 65536.
 
 .include "b64.inc"
+.include "slots.inc"
 
 .segment "CODE"
 
@@ -58,6 +59,55 @@ b64_reu_present:
         rts
 @no:    clc
         rts
+
+; b64_boot_check: the REU answers and holds the image this program was built
+; against, or the machine halts with the reason in the border.  The image's
+; header (tools/b64pack.py) is compared in place with the REU's verify
+; command: first the magic, then the format and the layout hash.
+; After Honza Slesinger, DOOM for the C64 Ultimate (REU image header with
+; boot cross-checks).  Changed: verified by the REU against seven constant
+; bytes, nothing is fetched and no RAM is used.
+b64_boot_check:
+        jsr b64_reu_present
+        lda #B64_ERR_NOREU
+        bcc b64_boot_halt
+        B64_SET24 b64_reu, SLOT_HEADER
+        B64_SET16 b64_ptr, boot_want
+        ldx #4                  ; the magic
+        ldy #B64_ERR_NOIMAGE
+        jsr @verify
+        B64_SET24 b64_reu, SLOT_HEADER+4
+        B64_SET16 b64_ptr, boot_want+4
+        ldx #3                  ; format and layout hash
+        ldy #B64_ERR_STALE
+@verify:
+        stx b64_len
+        lda #0
+        sta b64_len+1
+        lda #REU_CMD_VERIFY
+        jsr reu_go
+        lda REU_STATUS
+        and #$20                ; fault: the bytes differ
+        bne :+
+        rts
+:       tya
+; b64_boot_halt: A = the colour.  Flashes it against black for ever.
+b64_boot_halt:
+        sei
+        sta b64_tmp
+@flash: eor b64_tmp             ; alternates the colour and 0
+        sta VIC_BORDERCOLOR
+        ldx #0
+        ldy #0
+:       dex
+        bne :-
+        dey
+        bne :-
+        jmp @flash
+
+.segment "RODATA"
+boot_want:      .byte "B64R", REU_FORMAT, <REU_LAYOUT_HASH, >REU_LAYOUT_HASH
+.segment "CODE"
 
 ; Load a tileset from the REU slot at b64_reu:
 ;   +$0000 charset  -> B64_CHARSET  (2 KB)

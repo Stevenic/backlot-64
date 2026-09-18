@@ -9,7 +9,7 @@ A tileset is:
     (padded to 12 KB)
 
 Metatiles are drawn on a 4x4-cell multicolour canvas with the same drawing
-primitives as the Priors-64 demos, then deduped into the charset.
+primitives as the Priors-64 demos (tools/b64art.py), then deduped into the charset.
 
 usage: b64tileset.py <tileset-name> <out.bin> [--sprites out.spr]
 """
@@ -18,8 +18,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, "..", "..", "Priors-64", "tools"))
-from mkdemo import (  # noqa: E402
+from b64art import (  # noqa: E402
     BLACK, WHITE, RED, CYAN, PURPLE, GREEN, BLUE, YELLOW,
     ORANGE, BROWN, PINK, DGRAY, MGRAY, LGREEN, LBLUE, LGRAY,
     Canvas, FONT, encode_sprite, car_frames_mc, ped_frames_mc,
@@ -40,8 +39,13 @@ P_ROAD_ALL = 0x0F
 
 FONT_BASE = 192
 
-# Pepto luminance on a 0..8 scale, indexed by palette entry.  See docs/ART.md.
-LUMA = [0, 8, 3, 6, 4, 5, 2, 7, 4, 2, 5, 3, 5, 7, 5, 6]
+# The nine luma levels of every VIC-II after the 6569R1, 0..8, indexed by
+# palette entry: black, then seven pairs of equal luma, then white.
+# After Philip "Pepto" Timmermann, "Commodore VIC-II Color Analysis" (the
+# late-revision luma order 0 / 6,9 / 2,B / 4,8 / C,E / 5,A / 3,F / 7,D / 1).  As is.
+# The levels are not evenly spaced (0, 8, 10, 12, 15, 16, 20, 24, 32 of 32),
+# so an index step is a rank, not a distance.  See docs/ART.md section 2.
+LUMA = [0, 8, 2, 6, 3, 5, 1, 7, 3, 1, 5, 2, 4, 7, 4, 6]
 COLOUR_NAMES = ["black", "white", "red", "cyan", "purple", "green", "blue", "yellow",
                 "orange", "brown", "pink", "dgray", "mgray", "lgreen", "lblue", "lgray"]
 DITHER_MAX_STEP = 2
@@ -151,8 +155,8 @@ def mc():
 # Bellamar, day.  bg0 dark grey (asphalt), bg1 light grey (sidewalk, walls),
 # bg2 white (edges, dashes, foam).  v3 = per-cell colour.
 # ---------------------------------------------------------------------------
-def vice_city_day():
-    ts = Tileset("vice_day", (DGRAY, LGRAY, WHITE))
+def bellamar_day():
+    ts = Tileset("bellamar_day", (DGRAY, LGRAY, WHITE))
 
     c = mc(); c.cdots(0, 0, 4, 4, 3, 0, GREEN, 4, 4); ts.add("grass", c)
     c = mc(); c.cfill(0, 0, 4, 4, 3, CYAN)
@@ -220,7 +224,7 @@ def vice_city_day():
     return ts
 
 
-TILESETS = {"vice_day": vice_city_day}
+TILESETS = {"bellamar_day": bellamar_day}
 
 
 def main():

@@ -1,8 +1,9 @@
 ; backlot-64 REU image layout (see docs/PLAN.md, REU layout)
 size    16384
+header  $4FF000          ; the image's own description: magic, format, layout hash, slot table (b64pack.py)
 slot    WORLD     $000000  build/world.map
 slot    REGIONS   $400000  build/world.reg
-slot    TILESET0  $401000  build/vice_day.bin
+slot    TILESET0  $401000  build/bellamar_day.bin
 slot    SPRITES0  $431000  build/sprites0.spr
 slot    NIGHTSET  $500000  build/night-parked.still
 slot    CRUISERGRID $503000  build/cruiser.grid

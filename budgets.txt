@@ -1,0 +1,38 @@
+# backlot-64 budgets.  `make check` measures every line here in VICE (both
+# REU tiers, the larger value counts) and fails when a number is over its
+# limit, when a line has no measurement, or when a measurement has no line.
+# Limits sit about 5 percent over what was measured on 2026-09-18: the
+# benchmark's start is not locked to the raster, so its counts move by a
+# percent or two from run to run.  Raising a limit is a decision: say why in
+# the commit.
+#
+# name                      limit   measured  what it protects
+engine.bytes                10227   # 10182   CODE + RODATA inside $080D-$2FFF, the resident engine
+lowram.bytes                 1536   #  1511   engine tables in $0200-$07FF
+
+bench.fetch_64_border         180   #   169   one sprite frame: setup plus 64 bytes
+bench.fetch_256_border        380   #   361   one script page (a page cache miss)
+bench.fetch_1k_border        1190   #  1129
+bench.fetch_4k_border        4420   #  4201
+bench.fetch_8k_border        8850   #  8423   badlines included: 8 KB does not fit the border
+bench.fetch_64_display        180   #   169
+bench.fetch_256_display       380   #   361
+bench.fetch_1k_display       1280   #  1213
+bench.fetch_4k_display       4810   #  4579
+bench.fetch_8k_display       9510   #  9053
+bench.vm_64_loop             7950   #  7561   118 cycles per LOOP
+bench.vm_drive_71            6170   #  5868   83 cycles per opcode in the drive body
+bench.vm_add_65              6250   #  5952   92 cycles per ADD
+bench.asm_drive_64          14400   # 13712   the same drive step in assembly: 214 cycles
+
+overlay.load_8k              9560   #  9097   an 8 KB code overlay into region A
+
+# The tick depends on the art: re-quantising the cruiser with the corrected
+# luma table (2026-09-18) found wheels in four bottom sprites instead of
+# three, and the fourth animated sprite added about 475 cycles (8,414 before).
+cutscene.tick_median         9350   #  8889   callback plus engine frame work, interrupts included
+cutscene.tick_worst         16500   # 15692   the same on a shimmer frame (every fourth); a frame is 19,656
+
+# Known to be over its target.  The target is 6,000 (PLAN.md section 3.1);
+# the fills of ROADMAP step 6 are the fix.  The limit holds the line until then.
+scroll.worst_frame          10900   # 10361   scroll prepare, worst frame of the autodrive square

@@ -27,12 +27,6 @@ car_off:        .res NCARS      ; distance from centre, signed, for the turnarou
 .segment "GAME"
 game_main:
         jsr b64_init
-        jsr b64_reu_present
-        bcs @reu
-        lda #2                  ; red border: no REU
-        sta VIC_BORDERCOLOR
-@halt:  jmp @halt
-@reu:
         B64_SET24 b64_reu, SLOT_TILESET0
         jsr b64_load_tileset
 

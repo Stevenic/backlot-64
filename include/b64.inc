@@ -56,12 +56,16 @@ B64_PLAT_AUDIO  = $08           ; Ultimate Audio mapped at $DF20
 B64_PLAT_UCI    = $10           ; command interface mapped at $DF1C
 
 ; the game heap in the REU: everything above the packed assets
-B64_HEAP8       = $600000       ; 8 MB REU: $600000-$7EFFFF (SCRATCH is $7F0000)
-B64_HEAP8_END   = $7F0000
+B64_HEAP8       = $600000       ; 8 MB REU: $600000-$7DFFFF (persistent state is $7E0000, SCRATCH $7F0000)
+B64_HEAP8_END   = $7E0000
 B64_HEAP16      = $800000       ; 16 MB REU: the whole upper half
 B64_HEAP16_END  = $FF0000       ; $FF0000-$FFFFFF is the size probe's scratch
 REU_CMD_FETCH   = $91           ; execute, immediate, REU -> C64
 REU_CMD_STASH   = $90           ; execute, immediate, C64 -> REU
+REU_CMD_VERIFY  = $93           ; execute, immediate, compare; a mismatch sets REU_STATUS bit 5
+B64_ERR_NOREU   = 2             ; boot halts, as the border colour flashing against black: red, no REU answers
+B64_ERR_NOIMAGE = 7             ; yellow, the REU holds no backlot-64 image (in VICE: image size differs from the unit)
+B64_ERR_STALE   = 8             ; orange, the image was packed from another manifest or format
 
 ; property bits
 P_SOLID         = $80
@@ -445,6 +449,8 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global b64_hud_clear
 .global b64_hud_text            ; X = column, b64_val = string pointer
 .global b64_hud_number          ; X = column, b64_val = 16-bit value
+.global b64_boot_check          ; called by b64_init: halts unless the REU holds this build's image
+.global b64_boot_halt           ; A = B64_ERR_*: flash the border, never return
 .global b64_bench_begin
 .global b64_bench_end           ; b64_val = elapsed cycles (24-bit)
 .global b64_bench_show          ; prints last and max at row 0

@@ -8,7 +8,7 @@ This file is the strategy: what is resident, what is paged, who pages it, how lo
 
 ## 1. How long a read takes
 
-REU DMA moves one byte per cycle and halts the CPU while it runs. Setting up a transfer is nine register writes, about 105 cycles with the call. The VIC steals the bus on badlines and for sprites, so inside the displayed area a DMA runs at about 93 percent; in the border it runs at full speed.
+REU DMA moves one byte per cycle and halts the CPU while it runs. Setting up a transfer is nine register writes, about 105 cycles with the call. The VIC steals the bus on badlines and for sprites (the REU pauses whenever the VIC holds BA low), so inside the displayed area a DMA ran at about 93 percent in the benchmark; in the border, where no sprite is displayed, it runs at full speed. The 105 cycles are the engine's call, not the REU's: the hardware has no setup cost of its own.
 
 | Transfer | Cycles, border | Cycles, in the display | Time (PAL) | Share of a 19,656-cycle frame |
 |---|---|---|---|---|
@@ -17,18 +17,18 @@ REU DMA moves one byte per cycle and halts the CPU while it runs. Setting up a t
 | 1 KB screen matrix | 1,129 | 1,213 | 1.1 ms | 5.7 % |
 | 4 KB | 4,201 | 4,579 | 4.3 ms | 21 % |
 | 8 KB overlay or bitmap | 8,423 | 9,053 | 8.5 ms | 43 % |
-| 10 KB still | 10,500 | 11,300 | 10.7 ms | 53 % |
-| 12 KB tileset slot | 12,600 | 13,500 | 12.8 ms | 64 % |
-| 38 KB, the whole game area | 39,000 | 42,000 | 40 ms | 2 frames |
-| 64 KB | 65,600 | 70,500 | 67 ms | 3.3 frames |
+| 10 KB still | about 10,500 | 11,300 | 10.7 ms | 53 % |
+| 12 KB tileset slot | about 12,600 | 13,500 | 12.8 ms | 64 % |
+| 38 KB, the whole game area | about 39,000 | 42,000 | 40 ms | 2 frames |
+| 64 KB | about 65,600 | 70,500 | 67 ms | 3.3 frames |
 
-Measured in VICE with `make bench` (`examples/bench/main.s`, `tools/b64bench.py`). A transfer costs about 105 cycles of setup plus one cycle per byte in the border; inside the display the badlines slow it to about 93 percent. The sizes above 8 KB are extrapolated from the 8 KB figure.
+Measured in VICE with `make bench` (`examples/bench/main.s`, `tools/b64bench.py`); `make check` holds the measured rows to `budgets.txt`. A transfer costs about 105 cycles of setup plus one cycle per byte in the border; inside the display the badlines slow it to about 93 percent. The border is only 7,056 cycles, so nothing over about 6.9 KB is border-only: the 8 KB "border" figure already includes some badlines, and the rows above it are extrapolations, not measurements.
 
-For comparison a stock 1541 delivers about 300 bytes a second, so an 8 KB overlay is 27 seconds from disk and 8 milliseconds from the REU. A good fastloader is 5 to 10 KB a second. The REU is ten thousand times the disk, which is why the design treats it as memory, not storage.
+For comparison a stock 1541 delivers about 300 bytes a second, so an 8 KB overlay is 27 seconds from disk and 8 milliseconds from the REU. A good fastloader is 5 to 10 KB a second. The REU is about three thousand times the disk, which is why the design treats it as memory, not storage.
 
-The one budget that matters is the border: 112 lines, 7,056 cycles, when the VIC is not drawing. Anything that changes what is on screen (a screen shift, a block park, a palette change) goes there so the change is never seen half done. Anything that does not touch the picture (a page fetch for a script, a sector record, a sprite frame) can go anywhere in the frame.
+The one budget that matters is the border: 112 lines, 7,056 cycles, when the VIC is not drawing. Anything that changes what is on screen (a screen shift, a block park, a palette change) goes there so the change is never seen half done. Anything that does not touch the picture (a page fetch for a script, a sector record, a sprite frame) can go anywhere in the frame, provided no raster interrupt falls due during it: the CPU is halted for the whole transfer, so a DMA delays every interrupt by its own length, and an 8 KB transfer is about 134 raster lines.
 
-On real hardware the REU is filled once at boot from whatever mass storage the machine has: seconds from an SD2IEC or 1541 Ultimate, a quarter of an hour from a real 1541 with a fastloader. After that nothing touches the disk except the save.
+On real hardware the REU is filled once at boot from whatever mass storage the machine has: seconds from an SD2IEC or 1541 Ultimate, a quarter of an hour of reading from a real 1541 with a fastloader, and 48 disk sides to swap for 8 MB. After that nothing touches the disk except the save.
 
 ---
 
@@ -64,7 +64,7 @@ Five mechanisms, each owned by the engine. A game never writes a DMA.
 
 **Slots (on an event).** A tileset slot (12 KB) is swapped when the camera crosses a region border, under the region's core-only tile band so the swap is invisible. A still (10 KB) is loaded straight into the VIC bitmap when a script says STILL. An object's header comes in when a script says OBJECT. All of these are one DMA to a fixed address and nothing is kept afterwards but the header.
 
-**The page cache (on a miss).** For data read in small sequential pieces the engine keeps eight 256-byte pages at $2800 with a linear tag lookup and round-robin replacement. A hit is a compare; a miss is one 361-cycle DMA. This is how the VM will run p-code from the REU, how dialogue text is read, and how path tables are walked. Scripts stop being limited by RAM: a mission script can be 60 KB and the game pays for the pages it touches.
+**The page cache (on a miss).** For data read in small sequential pieces the engine keeps eight 256-byte pages at $C100 with a linear tag lookup and round-robin replacement. A hit is a compare; a miss is one 361-cycle DMA. This is how the VM will run p-code from the REU, how dialogue text is read, and how path tables are walked. Scripts stop being limited by RAM: a mission script can be 60 KB and the game pays for the pages it touches.
 
 **Overlays (on a screen change).** Code that is not per-frame lives in 8 KB slots in the REU assembled for region A or B. The map screen, the pause menu, the save system, an interior editor, the radio tuner: each is an overlay that loads in 8 ms when its screen opens and is forgotten when it closes. The render path never calls into an overlay, so a missing overlay cannot break a frame.
 
@@ -76,7 +76,7 @@ Five mechanisms, each owned by the engine. A game never writes a DMA.
 
 The VIC reads one 16 KB bank; the engine uses $4000-$7FFF.
 
-- **In play:** two 1 KB screens (A and B) double-buffered, a 2 KB charset, and 4 KB of sprite slots. The playfield is character mode, 40 x 23 cells over the HUD. Colour RAM at $D800 is a separate 1 KB the VIC reads directly.
+- **In play:** two 1 KB screens (A and B) double-buffered, a 2 KB charset, and 4 KB of sprite slots. The playfield is character mode, 40 x 23 cells over the HUD. Colour RAM at $D800 is a separate 1,024 four-bit cells (1,000 used) that the VIC reads directly; the upper four bits read back as bus noise, so colour data is never checked with the REU's verify.
 - **In a cutscene:** an 8 KB bitmap at $6000, its 1 KB colour cells at $5C00 (inside the sprite slot area, which the cutscene does not use for its top band), the text band on screen A, the font in the charset, and actor sprites in the remaining slots.
 
 Scrolling is two things. The VIC scrolls 0 to 7 pixels in hardware through two registers; that is free. Every eighth pixel the screen matrix (1,000 bytes) must move one cell, and the new column or row must be filled. The engine already does this (milestone E1): the shift is two DMAs through REU scratch, the fill comes from the metatile library, and the whole update runs in the border. Its worst case measured in VICE is about 9,200 cycles against a 6,000-cycle target; the fill is the next optimisation. So the answer to "does it scroll" is: the hardware does the fine part, the engine does the coarse part, and games see a camera position.
@@ -147,7 +147,7 @@ Three rules learned while moving the scene into the VM, all now in the engine:
 
 ## 7. Order of work
 
-1. **Page cache** in the data engine (E0.5): eight pages, four-way lookup, LRU. About 300 bytes.
+1. **Page cache** in the data engine (E0.5): eight pages, linear lookup, round-robin. About 300 bytes.
 2. **VM threads run from the REU:** the thread program counter becomes 24 bits and `vm_fetch` reads through the cache. Scripts leave the PRG.
 3. **Sector records** with the 3 x 3 ring, spawn and write-back hooks.
 4. **Overlay loader** with the two regions and the resident-check.
@@ -175,7 +175,7 @@ The policy on top of section 3: nothing is resident because it might be needed; 
 
 **Revised order of work.**
 
-1. Done: page cache at $2800, `src/b64_page.s`.
+1. Done: page cache at $C100, `src/b64_page.s`.
 2. Done: p-code from the REU; the example script left the PRG.
 3. Heading prefetch for sector records, then the split tileset swap.
 4. Screen packages and the overlay loader.

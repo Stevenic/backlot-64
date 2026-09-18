@@ -122,19 +122,19 @@ def report(outdir, name, trio):
 
 # Priors-64: stable core (dgray/lgray by day, black/dgray by night) plus a
 # regional accent, and full-trio interiors.
-GTA64_REGIONS = {
-    "vice-day": ("dgray", "lgray", "white"),
-    "vice-night": ("black", "dgray", "pink"),
+PRIORS64_REGIONS = {
+    "bellamar-day": ("dgray", "lgray", "white"),
+    "bellamar-night": ("black", "dgray", "pink"),
     "keys-day": ("dgray", "lgray", "lblue"),
     "keys-night": ("black", "dgray", "blue"),
-    "grass-day": ("dgray", "lgray", "brown"),
-    "grass-night": ("black", "dgray", "blue"),
+    "reedwater-day": ("dgray", "lgray", "brown"),
+    "reedwater-night": ("black", "dgray", "blue"),
     "port-day": ("dgray", "lgray", "orange"),
     "port-night": ("black", "dgray", "red"),
-    "ambrosia-day": ("dgray", "lgray", "green"),
-    "ambrosia-night": ("black", "dgray", "mgray"),
-    "kalaga-day": ("dgray", "lgray", "lgreen"),
-    "kalaga-night": ("black", "dgray", "mgray"),
+    "canebrook-day": ("dgray", "lgray", "green"),
+    "canebrook-night": ("black", "dgray", "mgray"),
+    "kestrel-day": ("dgray", "lgray", "lgreen"),
+    "kestrel-night": ("black", "dgray", "mgray"),
     "in-club": ("black", "purple", "pink"),
     "in-shop": ("dgray", "mgray", "lgray"),
     "in-safehouse": ("brown", "orange", "lgray"),
@@ -159,7 +159,7 @@ def main():
         name, cols = arg.split("=")
         trios[name] = tuple(cols.split(","))
     if not trios:
-        trios = GTA64_REGIONS
+        trios = PRIORS64_REGIONS
     union = []
     for name, names in trios.items():
         trio = tuple(NAME_TO_ID[n] for n in names)

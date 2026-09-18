@@ -20,12 +20,7 @@ replay_held:    .res 1
 .segment "GAME"
 game_main:
         jsr b64_init
-        jsr b64_reu_present
-        bcs :+
-        lda #2
-        sta VIC_BORDERCOLOR
-@halt:  jmp @halt
-:       B64_SET24 b64_reu, SLOT_TILESET0
+        B64_SET24 b64_reu, SLOT_TILESET0
         jsr b64_load_tileset    ; for the font
         jsr b64_cut_begin
         jsr start

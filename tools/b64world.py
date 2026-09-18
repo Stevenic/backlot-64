@@ -6,7 +6,7 @@ and a 64x64 region table (one tileset slot per 32x32-metatile sector).
 
 This is the first-cut procedural layout: one city on the east coast, an
 ocean, beach, highways, and grassland.  It exists so the scroller has
-something big to drive around.  The real Leonida layout replaces it in
+something big to drive around.  The real Coquina layout replaces it in
 Priors-64's own world tool.
 
 usage: b64world.py <world-name> <out.map> <out.reg>
@@ -21,7 +21,7 @@ from b64tileset import TILESETS  # noqa: E402
 W = H = 2048
 
 
-def vice_test(mt):
+def bellamar_test(mt):
     """mt: name -> metatile id."""
     grass, water, sand, walk = mt["grass"], mt["water"], mt["sand"], mt["sidewalk"]
     road_h, road_v, cross = mt["road_h"], mt["road_v"], mt["cross"]
@@ -81,7 +81,7 @@ def vice_test(mt):
     return b"".join(rows)
 
 
-WORLDS = {"vice_test": ("vice_day", vice_test)}
+WORLDS = {"bellamar_test": ("bellamar_day", bellamar_test)}
 
 
 def main():

@@ -778,6 +778,8 @@ b64_obj_load:
         ; anim size = 2 + nsprites + nframes * nsprites * 64
         lda #0
         sta obj_nlights
+        sta lights_on           ; a new object's lights are off until LIGHTS says otherwise
+        sta light_pending
         lda anim_hdr+1          ; nsprites (0 when there is no animation)
         clc
         adc #2

@@ -32,12 +32,7 @@ cs_wframe:      .res 1
 .segment "GAME"
 game_main:
         jsr b64_init
-        jsr b64_reu_present
-        bcs :+
-        lda #2
-        sta VIC_BORDERCOLOR
-@halt:  jmp @halt
-:       sei
+        sei
         lda #0
         sta res_i
 
@@ -98,7 +93,9 @@ game_main:
         sta results+3*14+1
         lda #5
         sta VIC_BORDERCOLOR     ; green: done
-@done:  jmp @done
+        jmp test_done
+test_done:                      ; the test runner breaks here
+        jmp test_done
 
 ; A = raster line to start on, X = 0: run the five sizes
 dma_series:

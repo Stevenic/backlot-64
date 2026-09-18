@@ -9,7 +9,7 @@ The engine measures itself the same way on the emulator and on the hardware, and
 | Record | How | Cost in a probe build |
 |---|---|---|
 | **Events** | Every `FTRACE` point in the engine writes (tag, frame, raster line) into a 160-entry ring: the order of work within a frame | about 120 cycles per event, about 14 events a frame on the cutscene |
-| **Samples** | CIA1 timer B fires every 4,093 cycles, a prime, so the samples sweep every phase of the frame; the handler records the interrupted program counter and, when the VM was running, the thread and its script offset, into a 128-entry ring | about 100 cycles per sample, 5 samples a frame |
+| **Samples** | CIA1 timer B fires every 4,093 cycles, a prime, so the samples sweep every phase of the frame; the handler records the interrupted program counter and, when the VM was running, the thread and its script offset, into a 128-entry ring | about 100 cycles per sample, 5 samples a frame at 1 MHz; under turbo the timer still counts the 1 MHz clock, so samples stay 4,093 microseconds apart and the tick and histogram are wall time |
 | **Opcodes** | The VM dispatch counts each opcode into 128 16-bit counters | 14 cycles per opcode |
 | **Tick** | The game callback plus the engine's frame effects, timed with the CIA2 timers: last, worst, and a histogram in 1,024-cycle buckets | about 100 cycles a frame |
 
