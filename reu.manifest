@@ -1,0 +1,16 @@
+; backlot-64 REU image layout (see docs/PLAN.md, REU layout)
+size    16384
+slot    WORLD     $000000  build/world.map
+slot    REGIONS   $400000  build/world.reg
+slot    TILESET0  $401000  build/vice_day.bin
+slot    SPRITES0  $431000  build/sprites0.spr
+slot    NIGHTSET  $500000  build/night-parked.still
+slot    CRUISERGRID $503000  build/cruiser.grid
+slot    CRUISERBLOCK $504000 build/cruiser.bblock
+slot    LAMP      $505000  build/lamp.spr
+slot    CRUISEROBJ $506000 build/cruiser.b64o
+slot    SCENE     $507000  build/scene.bin
+slot    BENCH     $508000  build/benchscripts.bin
+slot    HEAP8     $600000  -        ; game heap on an 8 MB REU (see B64_HEAP8)
+slot    SCRATCH   $7F0000  -
+slot    HEAP16    $800000  -        ; game heap on a 16 MB REU: only when b64_plat has REU16
