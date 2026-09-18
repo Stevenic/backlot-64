@@ -21,6 +21,7 @@
 .import spr_ready
 .import b64_cut_frame
 .export irq_rti
+.export b64_irq = irq
 .import cut_split
 .import mux_first
 
@@ -118,7 +119,7 @@ b64_init:
         sta spr_count_s
         sta spr_base_b
         sta mux_next
-        lda #24
+        lda #B64_MAX_SPRITES
         sta spr_base_s
         lda #1
         sta mux_cnt

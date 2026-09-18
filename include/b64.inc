@@ -19,7 +19,7 @@ B64_SPR_PTR_A   = B64_SCREEN_A + $3F8
 B64_SPR_PTR_B   = B64_SCREEN_B + $3F8
 B64_SPR_PTR_C   = $5C00 + $3F8       ; the cutscene bitmap's colour-cell screen
 B64_SPR_BASE    = (B64_SPRITES - $4000) / 64
-B64_MUXTAB      = $5700         ; the multiplexer's show lists, 528 bytes, in the sprite area above the 25 slots
+B64_MUXTAB      = $5640         ; the multiplexer's lists and routines, right after the 25 sprite slots
 B64_MUXTAB_END  = $5C00
 
 ; REU registers
@@ -351,7 +351,8 @@ scr_back_hi     = $39           ; high byte of the back buffer
 b64_cb          = $3A           ; game per-frame callback
 vm_pc           = $50           ; VM: offset of the running thread within its script, lo
 vm_pch          = $51           ; VM: offset hi
-vm_page         = $52           ; VM: pointer to the cached page holding the offset (engine ZP ends at $53)
+vm_page         = $52           ; VM: pointer to the cached page holding the offset
+mux_split       = $54           ; the line the sprite chain hands over at: the split while pending, else 250 (engine ZP ends at $54)
 scr_last_frame  = $3C
 bench_max       = $3D           ; 3 bytes: worst measured cycles
 b64_spr0_frame  = $40           ; pinned sprite 0 frame, written to both buffers on flip
@@ -374,7 +375,7 @@ mux_tmp2        = $4F
 
 B64_SPR_FLAG_MC   = $01
 B64_SPR_FLAG_PRIO = $02
-B64_MAX_SPRITES   = 24
+B64_MAX_SPRITES   = 32          ; virtual sprites the multiplexer takes each frame
 B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each at B64_SPRITES
 
 ; ---------------------------------------------------------------------------

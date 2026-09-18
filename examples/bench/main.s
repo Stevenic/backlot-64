@@ -13,7 +13,7 @@
 ;   14    (platform flags and REU size, not a time)
 ;   15-17 one scroller prepare for a cell crossing to the right, down, and
 ;         diagonally, started at line 100 with the example tileset and world
-;   18-19 b64_spr_end for 24 sprites in the multiplexer harness's pattern:
+;   18-19 b64_spr_end for 32 sprites in the multiplexer harness's pattern:
 ;         the first list (from submission order), then the next frame's
 
 .include "b64.inc"
@@ -135,7 +135,7 @@ game_main:
 test_done:                      ; the test runner breaks here
         jmp test_done
 
-; mux_list: the harness's 24 sprites at t = bt, then one b64_spr_end timed
+; mux_list: the harness's 32 sprites at t = bt, then one b64_spr_end timed
 mux_list:
         jsr b64_spr_begin
         ldx #0
@@ -152,8 +152,11 @@ mux_list:
         clc
         adc #60
         sta b64_spr_y
-        inx
-        stx b64_spr_slot
+        txa
+        and #7
+        clc
+        adc #1
+        sta b64_spr_slot
         lda #1
         sta b64_spr_colour
         lda #0
@@ -162,7 +165,7 @@ mux_list:
         jsr b64_spr_add
         ldx b64_tmp+7
         inx
-        cpx #24
+        cpx #32
         bne @s
         lda #100
         jsr wait_line
@@ -356,14 +359,14 @@ sizes_lo:       .byte <64, <256, <1024, <4096, <8192
 sizes_hi:       .byte >64, >256, >1024, >4096, >8192
 
 mx_lo:
-.repeat 24, i
-        .byte <(24 + (i .mod 12) * 26)
+.repeat 32, i
+        .byte <(24 + (i .mod 8) * 38)
 .endrepeat
 mx_hi:
-.repeat 24, i
-        .byte >(24 + (i .mod 12) * 26)
+.repeat 32, i
+        .byte >(24 + (i .mod 8) * 38)
 .endrepeat
 mphase:
-.repeat 24, i
-        .byte <((i .mod 12) * 11 + (i / 12) * 64)
+.repeat 32, i
+        .byte <((i .mod 8) * 4 + (i / 8) * 32)
 .endrepeat

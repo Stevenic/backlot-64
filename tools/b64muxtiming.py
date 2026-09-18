@@ -15,16 +15,27 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from b64vice import Vice                         # noqa: E402
 
-M = 0x5700                                      # B64_MUXTAB: the list arrays
-B_Y, ACC = M + 96, M + 288
 
 
 def regs(v):
-    m = re.search(r"\.;([0-9a-f]{4}) ([0-9a-f]{2}) ([0-9a-f]{2}) ([0-9a-f]{2}) \S+ \S+ \S+ \S+\s+(\d+)", v.cmd("r"))
-    return int(m.group(1), 16), int(m.group(3), 16), int(m.group(5))
+    m = re.search(r"\.;([0-9a-f]{4}) ([0-9a-f]{2}) ([0-9a-f]{2}) ([0-9a-f]{2}) \S+ \S+ \S+ \S+\s+(\d+) +(\d+)", v.cmd("r"))
+    return int(m.group(1), 16), int(m.group(3), 16), int(m.group(5)), int(m.group(6))
 
 
-def run(prg, lbl, image, reusize, port, frames=60, skip=100, lead_lines=1, dense=False):
+# The VIC-II's rules (Bauer, "The MOS 6567/6569 video controller", 3.8
+# and the 6569 timing diagram): a sprite's Y is compared with the raster in
+# cycle 55 of each line, and a match starts the sprite, shown on the next
+# 21 lines, so a sprite with Y = y is shown on lines y+1 .. y+21.  Its
+# pointer is fetched in the same line: sprite h's p-access is in cycle
+# 58 + 2h for h = 0..2, and in cycles 1, 3, 5, 7, 9 of the next line for
+# h = 3..7.  A generated routine stores Y about 12 cycles after it starts
+# and the pointer about 36 cycles after.
+Y_AT, PTR_AT = 12, 36
+
+
+def ptr_deadline(h, y):
+    return y * 63 + 58 + 2 * h if h <= 2 else (y + 1) * 63 + 2 * h - 5
+def run(prg, lbl, image, reusize, port, frames=60, skip=100, dense=False):
     v = Vice(prg, reusize, image, lbl, port)
     out = {"frames": 0, "writes": 0, "violations": [], "rejected": 0, "shown": 0}
     try:
@@ -39,7 +50,7 @@ def run(prg, lbl, image, reusize, port, frames=60, skip=100, lead_lines=1, dense
         by = None
         while out["frames"] < frames:
             v.cmd("x", 20)
-            pc, x, line = regs(v)
+            pc, x, line, cyc = regs(v)
             if pc not in range(rout, rout + 512):  # the frame counter: a new frame
                 out["frames"] += 1
                 out["rejected"] += v.mem("spr_rejected")[0]
@@ -48,17 +59,18 @@ def run(prg, lbl, image, reusize, port, frames=60, skip=100, lead_lines=1, dense
                 continue
             h = (pc - rout) // 64
             if by is None:
-                by = v.mem(B_Y, 48)
-                acc = v.mem(ACC, 48)
+                by = v.mem("mux_b_y", 64)
+                acc = v.mem("mux_acc", 64)
             old_y = v.mem(0xD001 + 2 * h)[0]
             new_y = by[acc[x]]
             out["writes"] += 1
             if line >= 250:
                 continue                        # group 0, in the blank: everything is finished
-            if line < old_y + 21 and line >= old_y:
-                out["violations"].append(("cut short", out["frames"], h, line, old_y, new_y))
-            if line + lead_lines >= new_y:
-                out["violations"].append(("late", out["frames"], h, line, old_y, new_y))
+            if old_y <= line <= old_y + 21:
+                out["violations"].append(("cut short", out["frames"], h, line, cyc, old_y, new_y))
+            start = line * 63 + cyc
+            if start + Y_AT > new_y * 63 + 55 or start + PTR_AT > ptr_deadline(h, new_y):
+                out["violations"].append(("late", out["frames"], h, line, cyc, old_y, new_y))
         for n in nums + [fw]:
             v.cmd(f"del {n:x}")
     finally:

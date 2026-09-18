@@ -33,14 +33,16 @@ bench.scroll_right           4450   #  4218   shift, column, stash
 bench.scroll_down            4350   #  4124   shift, row, stash
 bench.scroll_diag            6000   #  5754   shift, column, row, stash: the target
 
-# The multiplexer (roadmap step 9): b64_spr_end for the harness's 24
-# sprites, interrupts off, the first list (which generates the interrupt
-# routines) and the next frame's; and the interrupt cycles per frame in the
-# harness, the blank's other work and the status-row split included.  The
-# previous multiplexer: 7,329 / 8,172 and 8,891.
-bench.mux_first              9450   #  8999
-bench.mux_next               6200   #  5864   244 a sprite: sort, allocate, reject, group
-mux.irq_frame                6750   #  6428   24 sprites in 9 groups
+# The multiplexer (roadmap step 9, then 32 sprites in Phase 2.5): b64_spr_end
+# for the harness's 32 sprites, interrupts off, the first list (which
+# generates the interrupt routines) and the next frame's; and the interrupt
+# cycles per frame in the harness, both handlers, the blank's other work and
+# the status-row split included.  The harness puts a sprite every 4 lines,
+# the densest the hardware can reuse with seven sprites.  The previous
+# multiplexer, at 24 sprites: 7,329 / 8,172 and 8,891.
+bench.mux_first             15200   # 14489
+bench.mux_next               7850   #  7462   233 a sprite: sort, allocate, reject, group
+mux.irq_frame                8850   #  8404   32 sprites, one group every 4 lines
 
 overlay.load_8k              9560   #  9097   an 8 KB code overlay into region A
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The multiplexer harness (examples/mux) checked sprite by sprite.
 
-The harness puts sprite i at x = 24 + (i mod 12) * 26, y = 60 + ((2t +
+The harness puts sprite i at x = 24 + (i mod 8) * 38, y = 60 + ((2t +
 phase[i]) & 127) as a solid block in colour 1 + (i mod 15).  Given a
 screenshot and the t of the list it shows, each sprite is judged: whole
 (every pixel of its block, as far as the display window shows it, is one
@@ -11,16 +11,15 @@ may never show one damaged.
 """
 X0, Y0 = 32 - 24, 35 - 50          # VIC sprite coordinates to screenshot pixels (PAL, VICE)
 VIS = (32 + 7, 35, 32 + 320 - 9, 35 + 23 * 8)  # the 38-column playfield, above the HUD row
-NSPR = 24
+NSPR = 32
 
 
 def phase(i, dense):
-    return ((i % 12) * (2 if dense else 11) + (i // 12) * 64) & 255
+    return ((i % 8) * (1 if dense else 4) + (i // 8) * (16 if dense else 32)) & 255
 
 
 def position(i, t, dense):
-    x = 24 + (i % 12) * 26
-    y = 60 + (((2 * t) & 255) + phase(i, dense)) & 127
+    x = 24 + (i % 8) * 38
     return x, 60 + ((((2 * t) & 255) + phase(i, dense)) & 127)
 
 

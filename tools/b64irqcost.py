@@ -21,26 +21,29 @@ def measure(prg, lbl, frames=30, skip=150, port=6630, image=("build/world8.reu",
     v = Vice(prg, image[1], image[0], lbl, port)
     try:
         v.frames(skip)
-        a, b = v.addr("irq"), v.addr("irq_rti")
-        na = int(re.search(r"BREAK: (\d+)", v.cmd(f"break {a:04x}")).group(1))
-        nb = int(re.search(r"BREAK: (\d+)", v.cmd(f"break {b:04x}")).group(1))
+        entries = {v.addr("irq")}
+        exits = {v.addr("irq_rti")}
+        if "mux_irq" in v.labels:               # the chain's own handler (not in profile builds)
+            entries.add(v.addr("mux_irq"))
+            exits.add(v.addr("mux_irq_rti"))
+        nums = [int(re.search(r"BREAK: (\d+)", v.cmd(f"break {a:04x}")).group(1)) for a in entries | exits]
         per, cur, f0, start = [], 0, v.mem(0x10)[0], None
         while len(per) < frames:
             v.cmd("x", 20)
             m = re.search(r"\.;([0-9a-f]{4})", v.cmd("r"))
             pc = int(m.group(1), 16)
             c = cycles(v)
-            if pc == a:
+            if pc in entries:
                 start = c
-            elif pc == b and start is not None:
+            elif pc in exits and start is not None:
                 cur += c - start + 13
                 start = None
                 f = v.mem(0x10)[0]
                 if f != f0:
                     per.append(cur)
                     cur, f0 = 0, f
-        v.cmd(f"del {na:x}")
-        v.cmd(f"del {nb:x}")
+        for n in nums:
+            v.cmd(f"del {n:x}")
     finally:
         v.close()
     return per

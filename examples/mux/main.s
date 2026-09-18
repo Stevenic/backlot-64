@@ -1,15 +1,16 @@
 ; backlot-64 multiplexer harness.
 ;
-; 24 virtual sprites, each a solid 24 x 21 block in its own colour, on paths
-; the checker can reproduce exactly: sprite i sits in column (i mod 12), 26
+; 32 virtual sprites, each a solid 24 x 21 block in its own colour, on paths
+; the checker can reproduce exactly: sprite i sits in column (i mod 8), 38
 ; pixels apart, and falls two lines a frame, wrapping every 128 lines:
 ;
-;     x = 24 + (i mod 12) * 26
+;     x = 24 + (i mod 8) * 38
 ;     y = 60 + ((2 * t + phase[i]) & 127)
 ;
-; For the first 400 lists the phases keep at most four sprites on any line.
-; After that they bunch twelve columns into 24 lines, so a line can have
-; more than eight: the multiplexer's overload behaviour is what shows.
+; For the first 400 lists the four sprites of a column are 32 lines apart
+; and the columns 4 lines apart, so no line has more than six.  After that
+; the columns bunch into 8 lines and the sets 16 apart, so lines carry up to
+; sixteen: the multiplexer's overload behaviour is what shows.
 ;
 ; Each frame the callback builds the list between b64_bench_begin/end, then
 ; counts in a fixed loop until raster line 240, so the count is the time
@@ -25,7 +26,7 @@
 
 .export game_main
 
-NSPR    = 24
+NSPR    = 32
 DENSE_AT = 400
 
 .segment "GAMETOP"
@@ -76,10 +77,13 @@ frame:
         clc
         adc #60
         sta b64_spr_y
-        inx                     ; slot i+1
-        stx b64_spr_slot
-        lda colours-1,x
+        lda colours,x
         sta b64_spr_colour
+        txa
+        and #7
+        clc
+        adc #1
+        sta b64_spr_slot        ; eight slots shared: every sprite shows the same block
         lda #0
         sta b64_spr_flags
         B64_SET24 b64_reu, SLOT_BLOCK
@@ -178,21 +182,21 @@ test_done:                      ; the test runner breaks here
 .segment "GAME"                ; example data lives with the example, not in the engine area
 xs_lo:
 .repeat NSPR, i
-        .byte <(24 + (i .mod 12) * 26)
+        .byte <(24 + (i .mod 8) * 38)
 .endrepeat
 xs_hi:
 .repeat NSPR, i
-        .byte >(24 + (i .mod 12) * 26)
+        .byte >(24 + (i .mod 8) * 38)
 .endrepeat
-; normal: columns 11 lines apart, the two sprites of a column 64 apart
+; normal: columns 4 lines apart, the four sprites of a column 32 apart
 phase_n:
 .repeat NSPR, i
-        .byte <((i .mod 12) * 11 + (i / 12) * 64)
+        .byte <((i .mod 8) * 4 + (i / 8) * 32)
 .endrepeat
-; dense: twelve columns within 24 lines
+; dense: eight columns within 8 lines, the sets 16 apart
 phase_d:
 .repeat NSPR, i
-        .byte <((i .mod 12) * 2 + (i / 12) * 64)
+        .byte <((i .mod 8) * 1 + (i / 8) * 16)
 .endrepeat
 colours:
 .repeat NSPR, i
