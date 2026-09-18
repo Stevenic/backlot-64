@@ -5,27 +5,28 @@
 ;
 ; Scripts live in the REU and run through the page cache.  A thread's
 ; position is a 16-bit offset from the script base (vm_pch:vm_pc); vm_page
-; points at the cached copy of the page the offset is in, so an operand
-; fetch is one indirect load with Y as the offset's low byte.  Instructions
-; are at most 9 bytes, so when an instruction starts within 9 bytes of the
-; end of a page its bytes are copied into a small buffer that spans the
-; boundary; for that one instruction vm_page points at the buffer, Y counts
-; from 0, and the start offset is added back when the instruction ends.
+; points at the cached copy of the page the offset is in, and Y is the
+; offset's low byte while a thread runs.
 ;
-; Dispatch after Steve Wozniak, SWEET16 (push-and-return through a table).
-; Changed: two split tables instead of one page, costing one extra push;
-; the roadmap replaces this with the Å-machine's jmp (table).
-; Page-relative fetch after Linus Åkesson, Å-machine (engine.s fetchnext).
-; Changed: an instruction that straddles a page runs from a copy in a small
-; buffer instead of wrapping per byte; measured a wash in cycles and more
-; code, so the roadmap takes the per-byte wrap.  Immediate forms share the
-; register handler through a hidden variable (VM_T), a departure from SCUMM
-; v0's parameter bits; measured in docs/PRIOR-ART.md.  See CREDITS.md.
+; Dispatch after Linus Åkesson, Å-machine (src/6502/engine.s fetchnext):
+; the opcode byte is a doubled index, fetched with an absolute,Y load whose
+; page byte is patched when the page changes, and stored straight into the
+; low byte of a jmp (vector) through a page-aligned table.  17 cycles from
+; one opcode to the next.  Changed: the budget is charged on taken jumps
+; only, since a thread can only run long by jumping back, and the table is
+; padded with END so no bounds check is needed.
+; Operand fetch after the same source: one indirect load, with the page
+; wrap handled per byte on the rare path.  Changed from this VM's first
+; version, which copied straddling instructions into a buffer; measured a
+; wash in cycles and more code.
+; Immediate forms share the register handler through a hidden variable
+; (VM_T), a departure from SCUMM v0's parameter bits; measured in
+; docs/PRIOR-ART.md.  See CREDITS.md.
 ;
 ; Convention inside an op: Y = offset lo, past the opcode.  Read operands
 ; with FETCH.  Ops that need Y for something else save it with sty vm_pc
-; and reload it before jumping to vm_next.  An op ends with jmp vm_next,
-; or with jmp vm_yield to give the frame up.
+; and finish with jmp back.  An op ends with jmp vm_next, or jmp vm_yield
+; to give the frame up.
 
 .include "b64.inc"
 
@@ -38,12 +39,14 @@
 VM_THREADS      = 8
 VM_VARS         = 32
 VM_T            = 32            ; hidden variable: the immediate of every xxxI opcode
-VM_EDGE         = 243           ; an instruction starting at or past this offset spans the page
-VM_IBUF         = 13            ; longest instruction (PCM)
 
+; FETCH: A = next operand byte.  9 cycles on the common path.
 .macro FETCH
         lda (vm_page),y
         iny
+        bne :+
+        jsr vm_wrap
+:
 .endmacro
 
 .segment "LOWRAM"
@@ -59,16 +62,13 @@ vm_base:        .res 3          ; REU address of the script
 vm_cur:         .res 1
 vm_budget:      .res 1
 vm_budget_max:  .res 1
-vm_slow:        .res 1          ; 1 while vm_page points at the boundary buffer
-vm_slowbase:    .res 1          ; offset lo where the buffered instruction starts
 vm_x:           .res 1
-vm_ibuf:        .res VM_IBUF
 vm_line:        .res 41         ; TEXT copies its string here
 
 .segment "CODE"
 
-; b64_vm_start: b64_reu = script base, A/X = entry offset lo/hi.  Every
-; thread stops; thread 0 starts at the entry.
+; b64_vm_start: b64_reu = script base, A/X = entry offset.  Every thread
+; stops; thread 0 starts at the entry.
 b64_vm_start:
         sta th_pclo
         stx th_pchi
@@ -94,7 +94,7 @@ b64_vm_start:
         rts
 
 ; b64_vm_tick: once per frame.  Sleeping threads count down; ready threads
-; run until they yield, wait, end, or spend the budget.
+; run until they yield, wait, end, or spend the jump budget.
 b64_vm_tick:
         jsr b64_spr_begin
         ldx #0
@@ -111,9 +111,10 @@ b64_vm_tick:
         lda th_pchi,x
         sta vm_pch
         jsr vm_resolve
-        lda vm_budget_max       ; set by the platform probe: 64 at 1 MHz, 255 with turbo
+        lda vm_budget_max
         sta vm_budget
-        jsr vm_run
+        ldy vm_pc
+        jsr vm_exec             ; returns when the thread yields
         ldx vm_cur
         lda vm_pc
         sta th_pclo,x
@@ -126,64 +127,50 @@ b64_vm_tick:
         jmp b64_spr_end
 
 ; ---------------------------------------------------------------------------
-; the dispatch loop
-
-; vm_run: execute from vm_pch:vm_pc until an op returns (yield, end, budget)
-vm_run:
-        ldy vm_pc
-        jmp vm_exec
-
-; vm_next: an op has finished with Y = offset lo
+; the dispatch loop.  vm_next and vm_exec: Y = offset lo of the next opcode.
 vm_next:
-        sty vm_pc
-        lda vm_slow
-        beq vmn_chk
-        jsr vm_sync             ; leave the boundary buffer, page forward if we crossed
-        ldy vm_pc
-vmn_chk:   dec vm_budget
-        beq vme_out
 vm_exec:
-        cpy #VM_EDGE
-        bcs vme_edge
-vme_go:
-.ifdef VM_TRACE
-        ; debug: ring of (thread, offset hi, offset lo) at $E100, index at $E0FF
-        sty vm_x
-        ldx $E0FF
-        cpx #$FF
-        beq @nt
-        lda vm_cur
-        sta $E100,x
-        lda vm_pch
-        sta $E200,x
-        tya
-        sta $E300,x
-        inc $E0FF
-@nt:    ldy vm_x
-.endif
-        FETCH
-        cmp #VM_OP_COUNT
-        bcs vme_bad
-        tax
-        lda vm_ophi,x
+        lda $C100,y             ; the page byte is patched by vm_resolve
+vm_fetch_hi = *-1
+        iny
+        beq vm_exec_wrap
+vm_go:  sta vm_jmp+1            ; doubled opcode = low byte of the vector
+vm_jmp: jmp (vm_optab)          ; page-aligned: the high byte never changes
+vm_exec_wrap:
         pha
-        lda vm_oplo,x
-        pha
-        rts                     ; into the op, Y = first operand
-vme_bad:   jmp op_end
-vme_out:   rts
-vme_edge:  jsr vm_boundary
-        jmp vme_go
+        jsr vm_advance
+        pla
+        jmp vm_go
 
-; vm_yield: give the frame up with Y = offset lo
+; vm_yield: give the frame up with Y = offset lo.  Returns to the tick.
 vm_yield:
         sty vm_pc
-        lda vm_slow
-        beq :+
-        jsr vm_sync
-:       rts
+        rts
 
-; vm_resolve: vm_page = the cached page holding offset vm_pch; clears slow
+; back: an op saved Y in vm_pc and called into the engine
+back:   ldy vm_pc
+        jmp vm_next
+
+; vm_setpc: A/X = new offset lo/hi.  Charges the budget; a jump within the
+; current page keeps vm_page.
+vm_setpc:
+        sta vm_pc
+        cpx vm_pch
+        beq @same
+        stx vm_pch
+        jsr vm_resolve
+@same:  dec vm_budget
+        beq vm_out
+        ldy vm_pc
+        jmp vm_next
+vm_out: rts                     ; budget spent: vm_pc holds the resume point
+
+; vm_advance: the offset wrapped to the next page.  Y = 0 on exit.
+vm_advance:
+        inc vm_pch
+        ; fall through
+; vm_resolve: vm_page = the cached page holding vm_pch, patched into the
+; opcode fetch as well.  Clobbers A, X, Y.
 vm_resolve:
         lda vm_base+1
         clc
@@ -195,88 +182,30 @@ vm_resolve:
         tya
         jsr b64_page_get
         sta vm_page+1
+        sta vm_fetch_hi
         lda #0
         sta vm_page
-        sta vm_slow
+        tay
         rts
 
-; vm_sync: vm_pc holds the bytes consumed (from the buffer) or the offset
-; lo (from a page); make it the offset lo, carry into vm_pch, and point
-; vm_page at the real page.  Clears slow.
-vm_sync:
-        lda vm_slow
-        beq vm_resolve
-        lda #0
-        sta vm_slow
-        lda vm_slowbase
-        clc
-        adc vm_pc
-        sta vm_pc
-        bcc vm_resolve
-        inc vm_pch
-        jmp vm_resolve
-
-; vm_boundary: Y = offset lo >= VM_EDGE.  Copy the next VM_IBUF bytes,
-; across the page end, into vm_ibuf; point vm_page at it with Y = 0.
-vm_boundary:
-        sty vm_pc
-        sty vm_slowbase
-        ldx #0
-@copy:  lda (vm_page),y
-        sta vm_ibuf,x
-        inx
-        cpx #VM_IBUF
-        beq @done
-        iny
-        bne @copy
-        ; on to the next page for the rest (vm_resolve clobbers X and Y)
-        stx vm_x
-        inc vm_pch
-        jsr vm_resolve
-        dec vm_pch
-        ldx vm_x
-        ldy #0
-        jmp @copy
-@done:  lda #<vm_ibuf
-        sta vm_page
-        lda #>vm_ibuf
-        sta vm_page+1
-        lda #1
-        sta vm_slow
-        ldy #0
-        rts
-
-; vm_setpc: A/X = new offset lo/hi.  A jump within the current page keeps
-; vm_page; any other resolves it.
-vm_setpc:
-        sta vm_pc
-        cpx vm_pch
-        bne @far
-        ldy vm_slow
-        bne @far
-        ldy vm_pc
-        jmp vm_next
-@far:   stx vm_pch
-        jsr vm_resolve
-        ldy vm_pc
-        jmp vm_next
-
-; vm_getc: A = the byte at the offset, offset += 1, any page crossing
-; handled.  For strings; requires vm_slow = 0.  Test A, not the flags.
-vm_getc:
-        ldy vm_pc
-        lda (vm_page),y
-        inc vm_pc
-        bne :+
+; vm_wrap: called from FETCH on the rare wrap.  Preserves A and X; Y = 0.
+vm_wrap:
         pha
         txa
         pha
-        inc vm_pch
-        jsr vm_resolve          ; clobbers X and Y
+        jsr vm_advance
         pla
         tax
         pla
-:       rts
+        rts
+
+; vm_repage: after a page-cache lookup that may have evicted our page.
+; Y (the offset lo) is preserved.
+vm_repage:
+        sty vm_pc
+        jsr vm_resolve
+        ldy vm_pc
+        rts
 
 ; ---------------------------------------------------------------------------
 ; control
@@ -293,12 +222,19 @@ op_wait:
         sta th_wait,x
         jmp vm_yield
 op_jmp:
-        FETCH
+take:   FETCH
         sta b64_tmp
         FETCH
         tax
         lda b64_tmp
         jmp vm_setpc
+skip2:  iny
+        bne :+
+        jsr vm_wrap
+:       iny
+        bne :+
+        jsr vm_wrap
+:       jmp vm_next
 op_spawn:
         FETCH
         sta b64_val
@@ -326,25 +262,16 @@ op_call:
         sta b64_val
         FETCH
         sta b64_val+1
-        ; the return offset: Y past the operands, plus the start offset if
-        ; this instruction ran from the boundary buffer
-        ldx vm_pch
-        lda vm_slow
-        beq :+
-        tya
-        clc
-        adc vm_slowbase
-        tay
-        bcc :+
-        inx
-:       stx b64_tmp             ; return hi
-        sty b64_tmp+1           ; return lo
+        ; the return offset is Y in page vm_pch
+        sty b64_tmp+1
+        lda vm_pch
+        sta b64_tmp
         ldx vm_cur
         lda th_sp,x
         cmp #4
         bcs @go                 ; too deep: jump without a return
         jsr stack_index
-        lda b64_tmp+1           ; the saved offset lo
+        lda b64_tmp+1
         sta th_stk,y
         lda b64_tmp
         sta th_stk+1,y
@@ -382,22 +309,15 @@ op_loop:
 :       dec vm_lo,x
         lda vm_lo,x
         ora vm_hi,x
-        beq skip2
-take:   FETCH
-        sta b64_tmp
-        FETCH
-        tax
-        lda b64_tmp
-        jmp vm_setpc
-skip2:  iny
-        iny
-        jmp vm_next
+        beq @out
+        jmp take
+@out:   jmp skip2
 
 ; ---------------------------------------------------------------------------
 ; data.  Register forms take X = v, Y = w with the offset saved in vm_pc;
 ; immediate forms load the hidden variable T and share the register code.
 
-; vw: v -> vm_x, w -> Y, X = v; the offset is saved
+; VW: v -> X, w -> Y; the offset is saved
 .macro VW
         FETCH
         sta vm_x
@@ -425,8 +345,7 @@ mov_xy: lda vm_lo,y
         sta vm_lo,x
         lda vm_hi,y
         sta vm_hi,x
-back:   ldy vm_pc
-        jmp vm_next
+        jmp back
 op_mov:
         VW
         jmp mov_xy
@@ -521,7 +440,7 @@ op_jlti:
 op_jlt:
         VW
 jlt_xy: jsr cmp_xy
-        php                     ; ldy would clobber Z
+        php                     ; ldy would clobber the flags
         ldy vm_pc
         plp
         bcc @t
@@ -533,7 +452,7 @@ op_jgei:
 op_jge:
         VW
 jge_xy: jsr cmp_xy
-        php                     ; ldy would clobber Z
+        php
         ldy vm_pc
         plp
         bcs @t
@@ -545,7 +464,7 @@ op_jeqi:
 op_jeq:
         VW
 jeq_xy: jsr cmp_xy
-        php                     ; ldy would clobber Z
+        php
         ldy vm_pc
         plp
         beq @t
@@ -557,7 +476,7 @@ op_jnei:
 op_jne:
         VW
 jne_xy: jsr cmp_xy
-        php                     ; ldy would clobber Z
+        php
         ldy vm_pc
         plp
         bne @t
@@ -596,8 +515,9 @@ op_ldt:
         lda (b64_ptr),y
         ldx vm_x
         jsr set_byte
-        jsr vm_sync             ; the lookup may have replaced our page
-        jmp back
+        ldy vm_pc
+        jsr vm_repage           ; the lookup may have replaced our page
+        jmp vm_next
 set_byte:
         sta vm_lo,x
         lda #0
@@ -646,24 +566,21 @@ op_text:
         pha                     ; row
         FETCH
         sta vm_x                ; column
-        sty vm_pc
-        lda vm_slow
-        beq :+
-        jsr vm_sync
-:       ldx #0
-@copy:  jsr vm_getc
+        ldx #0
+@copy:  FETCH
         sta vm_line,x
-        cmp #0                  ; the flags after vm_getc are the pointer's, not the byte's
+        cmp #0
         beq @end
         inx
         cpx #40
         bne @copy
         lda #0
         sta vm_line,x
-:       jsr vm_getc             ; skip the rest of an overlong string
+:       FETCH                   ; skip the rest of an overlong string
         cmp #0
         bne :-
-@end:   lda #<vm_line
+@end:   sty vm_pc
+        lda #<vm_line
         sta b64_val
         lda #>vm_line
         sta b64_val+1
@@ -705,7 +622,7 @@ op_restore:
 ; the opcode re-runs next frame.
 op_park:
         jsr park_phase
-        bcs @retry
+        bcs park_retry
         FETCH
         sta b64_tmp
         FETCH
@@ -714,11 +631,18 @@ op_park:
         lda b64_tmp
         jsr b64_obj_park
         jmp back
-@retry: dey                     ; back to the opcode
-        jmp vm_yield
+; back to the opcode (Y is one past it, possibly across a page)
+park_retry:
+        tya
+        sec
+        sbc #1
+        sta vm_pc
+        bcs :+
+        dec vm_pch
+:       rts
 op_unpark:
         jsr park_phase
-        bcs @retry
+        bcs park_retry
         FETCH
         sta b64_tmp
         FETCH
@@ -727,8 +651,6 @@ op_unpark:
         lda b64_tmp
         jsr b64_obj_unpark
         jmp back
-@retry: dey
-        jmp vm_yield
 ; C = 1 if this frame's vblank is not the right phase
 park_phase:
         lda b64_frame
@@ -804,20 +726,18 @@ spr_xy:
         sta b64_spr_y
         rts
 
-.segment "RODATA"
-vm_oplo:
-        .lobytes op_end-1, op_wait-1, op_yield-1, op_jmp-1, op_spawn-1, op_call-1, op_ret-1, op_loop-1
-        .lobytes op_ldi-1, op_mov-1, op_add-1, op_addi-1, op_sub-1, op_subi-1, op_and-1, op_andi-1
-        .lobytes op_min-1, op_mini-1, op_max-1, op_maxi-1, op_shr-1, op_shl-1
-        .lobytes op_jlt-1, op_jlti-1, op_jge-1, op_jgei-1, op_jeq-1, op_jeqi-1, op_jne-1, op_jnei-1
-        .lobytes op_ldt-1, op_frame-1, op_joy-1
-        .lobytes op_still-1, op_object-1, op_shimmer-1, op_text-1, op_cleartext-1, op_blit-1, op_restore-1
-        .lobytes op_park-1, op_unpark-1, op_objspr-1, op_objanim-1, op_sprite-1, op_pcm-1
-vm_ophi:
-        .hibytes op_end-1, op_wait-1, op_yield-1, op_jmp-1, op_spawn-1, op_call-1, op_ret-1, op_loop-1
-        .hibytes op_ldi-1, op_mov-1, op_add-1, op_addi-1, op_sub-1, op_subi-1, op_and-1, op_andi-1
-        .hibytes op_min-1, op_mini-1, op_max-1, op_maxi-1, op_shr-1, op_shl-1
-        .hibytes op_jlt-1, op_jlti-1, op_jge-1, op_jgei-1, op_jeq-1, op_jeqi-1, op_jne-1, op_jnei-1
-        .hibytes op_ldt-1, op_frame-1, op_joy-1
-        .hibytes op_still-1, op_object-1, op_shimmer-1, op_text-1, op_cleartext-1, op_blit-1, op_restore-1
-        .hibytes op_park-1, op_unpark-1, op_objspr-1, op_objanim-1, op_sprite-1, op_pcm-1
+; ---------------------------------------------------------------------------
+; the vector table: 128 words on a page boundary, indexed by the doubled
+; opcode byte; unused entries are END
+.segment "VMTAB"
+vm_optab:
+        .word op_end, op_wait, op_yield, op_jmp, op_spawn, op_call, op_ret, op_loop
+        .word op_ldi, op_mov, op_add, op_addi, op_sub, op_subi, op_and, op_andi
+        .word op_min, op_mini, op_max, op_maxi, op_shr, op_shl
+        .word op_jlt, op_jlti, op_jge, op_jgei, op_jeq, op_jeqi, op_jne, op_jnei
+        .word op_ldt, op_frame, op_joy
+        .word op_still, op_object, op_shimmer, op_text, op_cleartext, op_blit, op_restore
+        .word op_park, op_unpark, op_objspr, op_objanim, op_sprite, op_pcm
+.repeat 128-VM_OP_COUNT
+        .word op_end
+.endrepeat

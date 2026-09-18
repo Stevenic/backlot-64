@@ -122,19 +122,19 @@ The VM cost 916 bytes and removed 724 bytes of scene-specific assembly (the driv
 
 ### P-code versus assembly, measured
 
-`make bench` times one VM tick of 64 opcodes against the same work in assembly. Two builds of the VM: the first fetched every operand byte through a subroutine; the second (current) runs p-code from the REU through the page cache with a page-relative fetch, and skips the page lookup for jumps within a page.
+`make bench` times one VM tick against the same work in assembly. Three builds of the VM so far: the first fetched every operand byte through a subroutine; the second ran p-code from the REU through the page cache with a page-relative fetch; the third (current, 2026-09-17) dispatches the Å-machine way: the opcode byte is a doubled index stored straight into the low byte of a `jmp (vector)` through a page-aligned table, 17 cycles from one opcode to the next, with the budget charged on taken jumps only.
 
-| Work | First VM | Current VM | Assembly |
-|---|---|---|---|
-| 64 x LOOP (fetch, dispatch, 16-bit decrement, jump) | 247 per opcode | 142 per opcode | |
-| 64 x ADD v, w | 194 per opcode | 116 per opcode | |
-| the cutscene drive body, 16 opcodes per iteration | 249 per opcode, 4,000 per iteration | 147 per opcode, 2,350 per iteration | 214 per iteration |
+| Work | First VM | Second VM | Current VM | Assembly |
+|---|---|---|---|---|
+| 64 x LOOP (16-bit decrement, taken jump) | 247 per opcode | 142 | 116 | |
+| 63 x ADD v, w then YIELD | 194 per opcode | 116 | 92 | |
+| the cutscene drive body, 16 opcodes a step | 4,000 per step | 2,350 | 1,464 (82 per opcode) | 214 per step |
 
-So a VM opcode now costs 115 to 150 cycles, and the drive loop runs 11 times slower as p-code than as assembly, down from 19. The remaining cost is dispatch (55 cycles: budget check, fetch, bounds check, the push-and-return jump) and the register save around each operand pair; the arithmetic itself is 30. Fatter opcodes for common pairs would be the next lever, not a faster dispatcher. The honest ratio to design around is ten times assembly.
+So a VM opcode now costs 82 to 116 cycles, and the drive loop runs 6.8 times slower as p-code than as assembly, down from 19 at the start. What remains is mostly operand fetching (9 cycles a byte, two to four bytes an opcode) and the register save around each operand pair; the arithmetic itself is 30. The next lever is fatter opcodes for common pairs, not a faster dispatcher. The honest ratio to design around is seven times assembly.
 
-What it means for budgets: the cutscene's two threads run about 26 opcodes a frame, about 3,500 cycles, fine for a scene with one actor. The plan's 1,500-cycle script budget is about 11 opcodes a frame. Neither number is enough for anything per entity per frame, which is the point of the rule: p-code decides, and the assembly hooks run what it decided for as many frames as it takes.
+What it means for budgets: the cutscene's two threads run about 26 opcodes a frame, about 2,300 cycles. The plan's 1,500-cycle script budget is about 16 opcodes a frame. Neither number is enough for anything per entity per frame, which is the point of the rule: p-code decides, and the assembly hooks run what it decided for as many frames as it takes.
 
-The VM grew from 916 to 1,713 bytes for the speed and the paging: the operand fetch is inlined in every opcode (about 450 bytes of that) and the page-boundary handling is about 150. Those 450 bytes can be traded back for 12 cycles an opcode by making the operand fetch a subroutine again; the choice is one edit.
+The VM is 2,208 bytes of code plus a 256-byte vector table: 430 bytes more than the second build, all of it the operand fetch inlined at every use (7 bytes instead of 3). That is the trade the dispatcher makes, and the roadmap's page table with a pin bit will not change it.
 
 Three rules learned while moving the scene into the VM, all now in the engine:
 

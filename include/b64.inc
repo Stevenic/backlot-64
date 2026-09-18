@@ -91,7 +91,8 @@ B64_IDLE_BYTE   = $7FFF
 B64_CUT_SPLIT   = 209
 
 ; ---------------------------------------------------------------------------
-; VM p-code.  Scripts are bytes in the REU: an opcode, then its operands.
+; VM p-code.  Scripts are bytes in the REU: an opcode (a doubled index, so the
+; byte is the offset into a page-aligned vector table), then its operands.
 ; They run through the page cache; nothing of a script is resident.
 ;   v, w   a variable index 0-31 (16-bit unsigned variables shared by all threads)
 ;   imm    a 16-bit immediate;  n an 8-bit immediate
@@ -103,56 +104,55 @@ B64_CUT_SPLIT   = 209
 ; sprite list around the tick, so a thread that submits sprites just runs
 ; OBJSPR/SPRITE then YIELD every frame.
 ; ---------------------------------------------------------------------------
-VM_OP_END       = 0             ; stop this thread (thread 0: the scene holds)
-VM_OP_WAIT      = 1             ; n: sleep n frames
-VM_OP_YIELD     = 2             ; continue next frame
-VM_OP_JMP       = 3             ; addr
-VM_OP_SPAWN     = 4             ; addr: start a thread there
-VM_OP_CALL      = 5             ; addr (two levels deep per thread)
-VM_OP_RET       = 6
-VM_OP_LOOP      = 7             ; v, addr: v -= 1; jump if v != 0
-VM_OP_LDI       = 8             ; v, imm
-VM_OP_MOV       = 9             ; v, w: v = w
-VM_OP_ADD       = 10            ; v, w: v += w
-VM_OP_ADDI      = 11            ; v, imm
-VM_OP_SUB       = 12            ; v, w
-VM_OP_SUBI      = 13            ; v, imm
-VM_OP_AND       = 14            ; v, w
-VM_OP_ANDI      = 15            ; v, imm
-VM_OP_MIN       = 16            ; v, w: v = min(v, w)
-VM_OP_MINI      = 17            ; v, imm
-VM_OP_MAX       = 18            ; v, w
-VM_OP_MAXI      = 19            ; v, imm
-VM_OP_SHR       = 20            ; v, n: v >>= n
-VM_OP_SHL       = 21            ; v, n
-VM_OP_JLT       = 22            ; v, w, addr: jump if v < w (unsigned)
-VM_OP_JLTI      = 23            ; v, imm, addr
-VM_OP_JGE       = 24            ; v, w, addr
-VM_OP_JGEI      = 25            ; v, imm, addr
-VM_OP_JEQ       = 26            ; v, w, addr
-VM_OP_JEQI      = 27            ; v, imm, addr
-VM_OP_JNE       = 28            ; v, w, addr
-VM_OP_JNEI      = 29            ; v, imm, addr
-VM_OP_LDT       = 30            ; v, addr, w: v = byte table addr[w & 255]
-VM_OP_FRAME     = 31            ; v: v = frame counter
-VM_OP_JOY       = 32            ; v: v = joystick 2 bits
+VM_OP_END       = 0            ; stop this thread (thread 0: the scene holds)
+VM_OP_WAIT      = 2            ; n: sleep n frames
+VM_OP_YIELD     = 4            ; continue next frame
+VM_OP_JMP       = 6            ; addr
+VM_OP_SPAWN     = 8            ; addr: start a thread there
+VM_OP_CALL      = 10           ; addr (two levels deep per thread)
+VM_OP_RET       = 12
+VM_OP_LOOP      = 14           ; v, addr: v -= 1; jump if v != 0
+VM_OP_LDI       = 16           ; v, imm
+VM_OP_MOV       = 18           ; v, w: v = w
+VM_OP_ADD       = 20           ; v, w: v += w
+VM_OP_ADDI      = 22           ; v, imm
+VM_OP_SUB       = 24           ; v, w
+VM_OP_SUBI      = 26           ; v, imm
+VM_OP_AND       = 28           ; v, w
+VM_OP_ANDI      = 30           ; v, imm
+VM_OP_MIN       = 32           ; v, w: v = min(v, w)
+VM_OP_MINI      = 34           ; v, imm
+VM_OP_MAX       = 36           ; v, w
+VM_OP_MAXI      = 38           ; v, imm
+VM_OP_SHR       = 40           ; v, n: v >>= n
+VM_OP_SHL       = 42           ; v, n
+VM_OP_JLT       = 44           ; v, w, addr: jump if v < w (unsigned)
+VM_OP_JLTI      = 46           ; v, imm, addr
+VM_OP_JGE       = 48           ; v, w, addr
+VM_OP_JGEI      = 50           ; v, imm, addr
+VM_OP_JEQ       = 52           ; v, w, addr
+VM_OP_JEQI      = 54           ; v, imm, addr
+VM_OP_JNE       = 56           ; v, w, addr
+VM_OP_JNEI      = 58           ; v, imm, addr
+VM_OP_LDT       = 60           ; v, addr, w: v = byte table addr[w & 255]
+VM_OP_FRAME     = 62           ; v: v = frame counter
+VM_OP_JOY       = 64           ; v: v = joystick 2 bits
 ; engine primitives (the syscall bridge)
-VM_OP_STILL     = 33            ; slot: load a set
-VM_OP_OBJECT    = 34            ; slot: load an object
-VM_OP_SHIMMER   = 35            ; n: 0 off / 1 on
-VM_OP_TEXT      = 36            ; row, col, string, 0
-VM_OP_CLEARTEXT = 37
-VM_OP_BLIT      = 38            ; slot, cx, cy
-VM_OP_RESTORE   = 39            ; cx, cy, w, h
-VM_OP_PARK      = 40            ; cx, cy: blocks until the vblank that can do it, then queues it
-VM_OP_UNPARK    = 41            ; cx, cy: same
-VM_OP_OBJSPR    = 42            ; slot, vx, vy: submit the object's sprite grid at (vx, vy)
-VM_OP_OBJANIM   = 43            ; v: the object's animation frame
-VM_OP_SPRITE    = 44            ; slot, vx, vy, colour, slot24: submit one sprite
-VM_OP_PCM       = 45            ; ch, slot24, len24, rate16, vol, pan: play a sample (Ultimate Audio; no-op elsewhere)
-VM_OP_COUNT     = 46
-
-; script macros: one line per instruction
+VM_OP_STILL     = 66           ; slot: load a set
+VM_OP_OBJECT    = 68           ; slot: load an object
+VM_OP_SHIMMER   = 70           ; n: 0 off / 1 on
+VM_OP_TEXT      = 72           ; row, col, string, 0
+VM_OP_CLEARTEXT = 74
+VM_OP_BLIT      = 76           ; slot, cx, cy
+VM_OP_RESTORE   = 78           ; cx, cy, w, h
+VM_OP_PARK      = 80           ; cx, cy: blocks until the vblank that can do it, then queues it
+VM_OP_UNPARK    = 82           ; cx, cy: same
+VM_OP_OBJSPR    = 84           ; slot, vx, vy: submit the object's sprite grid at (vx, vy)
+VM_OP_OBJANIM   = 86           ; v: the object's animation frame
+VM_OP_SPRITE    = 88           ; slot, vx, vy, colour, slot24: submit one sprite
+VM_OP_PCM       = 90           ; ch, slot24, len24, rate16, vol, pan: play a sample (Ultimate Audio; no-op elsewhere)
+VM_OP_COUNT     = 46            ; opcodes are stored doubled: byte = 2 * index into a page-aligned table
+; (the constants above are the doubled bytes); script macros: one line per instruction
 .macro V_END
         .byte VM_OP_END
 .endmacro

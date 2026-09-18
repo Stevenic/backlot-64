@@ -7,9 +7,9 @@
 ;   0-4   fetch 64 / 256 / 1024 / 4096 / 8192 bytes, started at line 251 (border)
 ;   5-9   the same, started at line 100 (inside the display, badlines)
 ;   10    one VM tick of a script that is only LOOP: 64 opcodes (cache warm)
-;   11    one VM tick of the cutscene's drive loop body: 64 opcodes, 4 iterations
+;   11    one VM tick of the cutscene's drive loop body: 71 opcodes, 4 steps
 ;   12    64 iterations of the same drive step written in assembly
-;   13    one VM tick of 64 ADD v,w
+;   13    one VM tick of 63 ADD v,w then YIELD (65 opcodes with the restart JMP)
 
 .include "b64.inc"
 .include "slots.inc"

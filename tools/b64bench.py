@@ -13,8 +13,8 @@ NAMES = [
     ("fetch 4 KB, border", 4096), ("fetch 8 KB, border", 8192),
     ("fetch 64 B, display", 64), ("fetch 256 B, display", 256), ("fetch 1 KB, display", 1024),
     ("fetch 4 KB, display", 4096), ("fetch 8 KB, display", 8192),
-    ("VM tick, 64 x LOOP", 64), ("VM tick, drive body, 64 ops", 64),
-    ("asm, 64 x drive step", 64), ("VM tick, 64 x ADD", 64),
+    ("VM tick, 64 x LOOP", 64), ("VM tick, drive body, 71 ops (4 steps)", 71),
+    ("asm, 64 x drive step", 64), ("VM tick, 63 x ADD + YIELD + JMP", 65),
 ]
 
 def main():

@@ -10,6 +10,8 @@ Nine C64 projects were read for techniques worth taking. Each entry names the so
 
 ### 2. Zero-page fetch and page-aligned dispatch (Å-machine)
 
+*Adopted 2026-09-17.* Measured: 82 to 116 cycles per opcode, from 116 to 147. Changed: the budget is charged on taken jumps rather than every opcode, since a thread can only run long by jumping back; the operand fetch stays an indirect load at each use rather than a shared routine, because a `jsr` per byte would cost more than the 4-cycle absolute load saves.
+
 `src/6502/engine.s` `fetchnext`, Linus Åkesson's Å-machine. The fetch lives in zero page: increment Y, branch on wrap, load absolute-indexed through a self-modified page byte (4 cycles, not 5), then `jmp (optable)` through a page-aligned table whose low byte is patched with the pre-doubled opcode. 23 cycles against this VM's 56 for the same work. **Module:** VM dispatch, 40 to 50 percent of the measured 116 to 147 cycles per opcode. **Cost:** a 256-byte aligned table padded with END so the bounds check goes away, a dozen bytes of zero page, opcodes doubled by the assembler macros. Also from the same source: per-byte wrap on operand fetches instead of the boundary buffer, which is a wash in cycles and a large simplification in code.
 
 ### 3. SID register stream (DOOM C64U)
