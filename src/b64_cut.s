@@ -20,6 +20,7 @@
 .export cut_split
 .export shim_on
 .export b64_cut_frame
+.export b64_cut_light
 .export cut_row_lo, cut_row_hi
 
 CUT_BITMAP      = $6000
@@ -48,6 +49,8 @@ obj_bm:         .res 3          ; bitmap rows
 obj_scr:        .res 3          ; screen bytes
 obj_col:        .res 3          ; colour bytes
 park_pending:   .res 1          ; 0 none, 1 park, 2 unpark
+light_pending:  .res 1          ; 1 = apply the lighting state at light_addr at the next base-phase blank
+light_addr:     .res 3
 park_x:         .res 1
 park_y:         .res 1
 obj_k:          .res 1
@@ -83,6 +86,7 @@ b64_cut_begin:
         sta cut_active
         lda #0
         sta park_pending
+        sta light_pending
         sta shim_on
         sta shim_parked
         sta shim_n
@@ -504,7 +508,52 @@ cut_vblank:
 @un:    jsr obj_restore
 @clr:   lda #0
         sta park_pending
-@done:  rts
+@done:
+        ; deferred lighting: a 2 KB state (background, 800 screen bytes,
+        ; 800 colour bytes for the visible rows) streamed in the border on
+        ; a base-phase frame, so the shimmer's swapped cells are never
+        ; relit out of step.  About 1,900 cycles.
+        lda light_pending
+        beq @lit
+        lda b64_frame
+        and #4
+        bne @lit
+        lda light_addr
+        sta b64_reu
+        lda light_addr+1
+        sta b64_reu+1
+        lda light_addr+2
+        sta b64_reu+2
+        B64_SET16 b64_ptr, cut_bg
+        B64_SET16 b64_len, 1
+        jsr b64_fetch
+        jsr reu_advance_len
+        lda cut_bg
+        sta VIC_BG_COLOR0
+        B64_SET16 b64_ptr, CUT_BMSCREEN
+        B64_SET16 b64_len, 800
+        jsr b64_fetch
+        jsr reu_advance_len
+        B64_SET16 b64_ptr, B64_COLOR_RAM
+        B64_SET16 b64_len, 800
+        jsr b64_fetch
+        lda #0
+        sta light_pending
+@lit:   rts
+
+; b64_cut_light: b64_reu = address of a 2 KB lighting state: queue it for
+; the next base-phase vertical blank.  A newer request replaces an older
+; one that has not landed yet.
+b64_cut_light:
+        lda b64_reu
+        sta light_addr
+        lda b64_reu+1
+        sta light_addr+1
+        lda b64_reu+2
+        sta light_addr+2
+        lda #1
+        sta light_pending
+        rts
 
 ; shimmer: every 4th frame swap the two colour codes of each listed cell by
 ; exchanging the nibbles of its screen byte, so the dither pattern inverts and

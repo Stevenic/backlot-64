@@ -57,6 +57,16 @@ The playfield scroller (E1) is this strategy with metatiles: the screen matrix s
 
 **Prefetch:** when a sector record loads, the sprite frames its entities will need are streamed into free slots before the entities are visible, so a busy street costs nothing on its first visible frame.
 
+### 2.3b Baked lighting (built)
+
+**For:** anything that changes how a still or a screen is lit: dusk, neon, a lamp moving with a car, a strobe.
+
+**How:** the VIC's bitmap holds colour *codes*; the colours they mean live in screen RAM, colour RAM and the background register. A lighting state is those bytes for the visible rows, 1.6 KB, precomputed on the Mac from the still and a light model (`tools/b64light.py`) and streamed by two DMAs in a base-phase vertical blank. Localised light is a state per light position; the script picks the state from the object's position. The bitmap is never touched.
+
+**Cost:** 1,900 cycles in the blank per applied state; 2 KB of REU per state. A 32-step dusk is 64 KB; a beacon at 20 positions in two colours is 82 KB.
+
+**Rule:** applied only on base-phase frames so the shimmer's swapped cells are never relit out of step; the background colour is global, so colour-00 pixels cannot be relit per cell.
+
 ### 2.4 Slot swap, split
 
 **For:** a big fixed-size asset that changes on a known event: the tileset at a region border (12 KB), a sprite bank.

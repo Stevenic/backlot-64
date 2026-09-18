@@ -27,6 +27,7 @@ Rules of the repository:
 - The interrupt saves the shared zero-page scratch; a DMA's register writes run with interrupts masked. Keep both when adding vertical-blank work, and keep the vertical blank short: the sprite list is taken first, and anything costing more than a few hundred cycles (the shimmer) runs from the main loop through `b64_cut_frame`, not the interrupt. A tick is about 9,600 cycles today; measure with `make probe-<example>` before adding to either side.
 - The sprite list is handed to the vertical blank only when `b64_spr_end` has finished it; `b64_spr_begin` waits for the handoff. Do not touch the list arrays from interrupt code.
 - Nothing in assembly hard-codes an REU address; use the symbols in `build/slots.inc` from `reu.manifest`.
+- Lighting is colour maps, never bitmap edits: `tools/b64light.py` makes them, the LIGHT opcode applies them in a base-phase blank, and a localised light is a map per light position (see `docs/PREPARE.md`, lighting states).
 - Every converted asset is checked in the emulator before it is called done. `make shot-cutscene` and the remote monitor are the tools; diff frames for anything that transforms.
 - The quantisers report repairs and damage. High numbers mean fix the art, not the tool.
 - Branches on the 6502 reach 127 bytes; loops with DMA calls in them need `jmp`. After a subroutine, test the value (`cmp #0`), never the flags it happened to leave.

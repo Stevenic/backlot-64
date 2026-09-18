@@ -732,6 +732,36 @@ op_pcm:
         ldx vm_x
         jsr b64_pcm_play
         jmp back
+; LIGHT slot24, v: state address = slot + v * 2048
+op_light:
+        SLOT
+        FETCH
+        sty vm_pc
+        tax
+        lda vm_lo,x             ; state number, 0-255
+        pha
+        and #31
+        asl
+        asl
+        asl                     ; (v & 31) << 3 into the middle byte
+        clc
+        adc b64_reu+1
+        sta b64_reu+1
+        lda #0
+        adc #0
+        sta b64_tmp             ; the carry out of the middle byte
+        pla
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr                     ; v >> 5 into the high byte (the shifts leave their own carry: clear it)
+        clc
+        adc b64_tmp
+        adc b64_reu+2
+        sta b64_reu+2
+        jsr b64_cut_light
+        jmp back
 ; spr_xy: operands vx, vy -> b64_spr_x/y; the offset is saved
 spr_xy:
         FETCH
@@ -758,7 +788,7 @@ vm_optab:
         .word op_jlt, op_jlti, op_jge, op_jgei, op_jeq, op_jeqi, op_jne, op_jnei
         .word op_ldt, op_frame, op_joy
         .word op_still, op_object, op_shimmer, op_text, op_cleartext, op_blit, op_restore
-        .word op_park, op_unpark, op_objspr, op_objanim, op_sprite, op_pcm
+        .word op_park, op_unpark, op_objspr, op_objanim, op_sprite, op_pcm, op_light
 .repeat 128-VM_OP_COUNT
         .word op_end
 .endrepeat

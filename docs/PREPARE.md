@@ -39,6 +39,14 @@ Every asset goes through a quantiser that enforces the VIC-II's real colour rule
 
 **Check:** the preview shows sprites left and block right; they must match. The tool prints the wheels it found; if it finds none, the tyres are not black or are touching a keyed colour. Repaired block cells should be under 15. Then prove it in the emulator: capture a frame before and after the park and diff them; only overlay pixels may differ.
 
+### Lighting states (relighting a set without touching its bitmap)
+
+**What:** a file of 2 KB states, each a background byte plus 800 screen and 800 colour bytes for the visible rows, for one set. The engine applies a state with `b64_cut_light` or the LIGHT opcode in a base-phase vertical blank.
+
+**Make it:** `b64light.py <set.still> <out.bin> dusk --steps 32` for a day-to-night ramp; `b64light.py <set.still> <out.bin> beacon --positions 20 --row 13 --radius 11` for a lamp that lights what is near it, one red and one blue state per lamp position (lamp cell x = 2p + 5). Add `--preview <prefix>` to write PNGs of a few states. Pack the file as a slot; a script addresses state v as `V_LIGHT SLOT, v` with v in a variable.
+
+**Check:** look at the previews first; in the emulator, screenshot consecutive frames through the strobe (the frame-counter watch, not wall-clock sleeps, since the strobe's period is eight frames and a fixed interval samples one phase). The background colour is one register, so colour-00 pixels do not change per cell; a set that must be lit locally should draw its lit surfaces in cell colours, not the background.
+
 ### Portrait (a big picture for about screens and dialogue)
 
 **What:** a character block, 16 x 12 cells for a three-quarter view or 20 x 8 for a profile, on a plain background.

@@ -28,7 +28,7 @@ VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 .PHONY: all assets run-scroll shot-scroll palette clean
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -70,13 +70,36 @@ $(BUILD)/lamp.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/vice_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/vice_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
 $(BUILD)/scene.bin: examples/cutscene/scene.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
 	$(AS) -g -t c64 -I include -I $(BUILD) -o $(BUILD)/scene.o $<
 	$(LD) -C script.cfg -o $@ $(BUILD)/scene.o -Ln $(BUILD)/scene.lbl
+
+# the lighting showcase: a day set, its dusk states, strobe states for the night set, and its script
+$(BUILD)/day.still: images/day-still.png tools/b64quant.py | $(BUILD)
+	$(PY) tools/b64quant.py still images/day-still.png $(BUILD)/formats/day-still.png --bin=$@
+
+$(BUILD)/daylight.bin: $(BUILD)/day.still tools/b64light.py
+	$(PY) tools/b64light.py $(BUILD)/day.still $@ dusk --steps 32
+
+$(BUILD)/nightlight.bin: $(BUILD)/night-parked.still tools/b64light.py
+	$(PY) tools/b64light.py $(BUILD)/night-parked.still $@ beacon --positions 20 --row 13 --radius 11
+
+$(BUILD)/show.bin: examples/showcase/scene.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
+	$(AS) -g -t c64 -I include -I $(BUILD) -o $(BUILD)/show.o $<
+	$(LD) -C script.cfg -o $@ $(BUILD)/show.o -Ln $(BUILD)/show.lbl
+
+$(BUILD)/showcase.o: examples/showcase/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -t c64 $(INC) -o $@ $<
+
+$(BUILD)/showcase.prg: $(ENGINE_OBJS) $(BUILD)/showcase.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/showcase.o -m $(BUILD)/showcase.map
+
+run-showcase: $(BUILD)/showcase.prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/showcase.prg
 
 $(BUILD)/benchscripts.bin: examples/bench/scripts.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
 	$(AS) -t c64 -I include -I $(BUILD) -o $(BUILD)/benchscripts.o $<
