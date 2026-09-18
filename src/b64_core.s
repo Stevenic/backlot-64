@@ -18,6 +18,7 @@
 .import spr_slots_reset
 .import cut_active
 .import cut_vblank
+.import spr_ready
 .import b64_cut_frame
 .import cut_split
 .import mux_first
@@ -40,25 +41,6 @@ irq_save:       .res 20
 _start:
         jmp game_main
 
-.ifdef FRAME_TRACE
-.export ftrace_log
-ftrace_log:
-        stx $E3FE
-        ldx $E3FF
-        cpx #252
-        bcs @full               ; the ring is a one-shot log: stop when full
-        sta $E400,x
-        lda b64_frame
-        sta $E401,x
-        lda VIC_HLINE
-        sta $E402,x
-        inx
-        inx
-        inx
-        stx $E3FF
-@full:  ldx $E3FE
-        rts
-.endif
 
 ; ---------------------------------------------------------------------------
 b64_init:
@@ -144,6 +126,7 @@ b64_init:
         jsr spr_slots_reset
         jsr b64_page_flush
         jsr b64_plat_probe
+        PROBE_CALL probe_init
         lda #0
         sta cut_active
         lda #1
@@ -184,6 +167,8 @@ b64_run:
         cmp scr_last_frame
         beq @loop
         sta scr_last_frame
+:       lda spr_ready           ; wait here, not inside the callback, for the blank to take the last list
+        bne :-
         lda cut_active
         bne @cut
         lda scr_pending
@@ -198,9 +183,11 @@ b64_run:
 @cut:   ; cutscene: no scroller, the callback drives everything
         jsr read_joystick
         FTRACE 3
+        PROBE_CALL probe_tick_begin
         jsr call_cb
-        FTRACE 6
         jsr b64_cut_frame       ; the shimmer, after the callback and before the rows it touches are drawn
+        PROBE_CALL probe_tick_end
+        FTRACE 6
         jmp @loop
 
 call_cb:
@@ -220,6 +207,14 @@ irq:
         pha
         tya
         pha
+.ifdef B64_PROFILE
+        lda CIA1_ICR            ; the sampler's timer (reading acknowledges it)
+        and #$02
+        beq @vic
+        jsr probe_sample
+        jmp @out
+@vic:
+.endif
         lda VIC_HLINE
         cmp #250
         bcc :+
@@ -291,6 +286,7 @@ irq:
 @chain: jsr mux_chain
 @ack:   lda #$01
         sta VIC_IRR
+@out:
         pla
         tay
         pla

@@ -31,13 +31,10 @@
 .include "b64.inc"
 
 .import shim_on
-.ifdef FRAME_TRACE
-.import ftrace_log
-.endif
-
 .export b64_vm_start
 .export b64_vm_tick
 .export vm_budget_max
+.export vm_cur
 
 VM_THREADS      = 8
 VM_VARS         = 32
@@ -118,7 +115,15 @@ b64_vm_tick:
         lda vm_budget_max
         sta vm_budget
         ldy vm_pc
+.ifdef B64_PROFILE
+        lda #1
+        sta probe_vm_active
+.endif
         jsr vm_exec             ; returns when the thread yields
+.ifdef B64_PROFILE
+        lda #0
+        sta probe_vm_active
+.endif
         ldx vm_cur
         lda vm_pc
         sta th_pclo,x
@@ -141,6 +146,13 @@ vm_fetch_hi = *-1
         iny
         beq vm_exec_wrap
 vm_go:  sta vm_jmp+1            ; doubled opcode = low byte of the vector
+.ifdef B64_PROFILE
+        tax
+        inc probe_opcount_lo,x
+        bne :+
+        inc probe_opcount_hi,x
+:
+.endif
 vm_jmp: jmp (vm_optab)          ; page-aligned: the high byte never changes
 vm_exec_wrap:
         pha

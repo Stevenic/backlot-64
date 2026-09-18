@@ -438,14 +438,32 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global b64_bench_end           ; b64_val = elapsed cycles (24-bit)
 .global b64_bench_show          ; prints last and max at row 0
 
-; debug: -DFRAME_TRACE logs (tag, frame, raster line) triples at $E400
+; instrumentation: a probe build (-DB64_PROFILE) records events at every
+; FTRACE point, samples the program counter each vertical blank, counts
+; opcodes and times the tick into a block at $F800 (src/b64_probe.s).
+; Without the define every hook is empty.
 .macro FTRACE tag
-.ifdef FRAME_TRACE
+.ifdef B64_PROFILE
         php
         pha
         lda #tag
-        jsr ftrace_log
+        jsr probe_event
         pla
         plp
 .endif
 .endmacro
+.macro PROBE_CALL routine
+.ifdef B64_PROFILE
+        jsr routine
+.endif
+.endmacro
+.ifdef B64_PROFILE
+.global probe_event
+.global probe_sample
+.global probe_tick_begin
+.global probe_tick_end
+.global probe_init
+.global probe_vm_active
+.global probe_opcount_lo
+.global probe_opcount_hi
+.endif

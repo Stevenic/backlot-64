@@ -91,7 +91,19 @@ How the compiler tells pinned from cached: a syscall inside a loop that contains
 
 ---
 
-## 6. What this changes elsewhere
+## 6. The optimizer: spans
+
+The compiler gets an optimizer that turns a hot region of p-code into native 6502, a **span**, called from the script by an ordinary SYS. A span is a generated module: it lives in a slot, is pinned or cached like any other, and is linked once per slot like any other. Nothing new is needed in the VM.
+
+**Why the codegen is cheap.** Every opcode has a fixed native template over the VM's variable tables: `ADD v, w` with constant indices is four absolute loads and stores, about 20 cycles against 92 interpreted; branches become branches, LDT an indexed load, a syscall a `jsr`. State stays in the VM's variables, so a span reads and writes exactly what the p-code did. The generator is template expansion.
+
+**Where a span may begin and end.** Only at yield points. A span cannot contain YIELD or WAIT, because native code cannot suspend as a thread does. The hot case is a per-frame loop, body then YIELD then a jump back; the body becomes the span and the p-code keeps `SYS span; YIELD; JMP`.
+
+**How the optimizer decides.** Native code is three to four times the bytes of the p-code it replaces, and a per-frame span must be pinned, so it competes with physics and AI for the pinned region. The measure is cycles saved per pinned byte: rank regions, take the best until the pinned budget is full, cache the rest or leave them interpreted. The profile comes from the probe (`INSTRUMENT.md`): a run in VICE or on the hardware gives, per script offset, how often the VM was found there. Static analysis knows the loops; the profile knows which branches are taken.
+
+**What it keeps true.** "Scripts decide, hooks execute" still holds; a hook can now be generated from a script instead of written by hand, and it still cannot crash the machine because the generator only emits templates. Expected on the cutscene: the drive body from 1,464 cycles to about 250.
+
+## 7. What this changes elsewhere
 
 - **`PLAN.md` section 4.** Tiers, the catalogue, hooks versus syscalls, upgrade points and bespoke modules all stand. "Resident or overlay" as a build-time kind is gone; the manifest becomes the compiler's plan; the packer checks the plan.
 - **The VM.** Gains SYS, NEED, a wait-on-module state per thread, and the load queue. About 300 bytes.
@@ -101,12 +113,13 @@ How the compiler tells pinned from cached: a syscall inside a loop that contains
 
 ---
 
-## 7. Order of work
+## 8. Order of work
 
 1. **Code cache.** Four slots, pins, stamps, LRU, loads from the main loop. `examples/overlay` grows to exercise eviction and pinning. Measured: load cost per slot, compare cost.
 2. **Module format and tool.** The jump table, the descriptor, one link per allowed slot, the packer's module table.
 3. **SYS and NEED opcodes.** The table jump, the wait-on-module state, the prefetch queue. A test script calls two modules alternately with and without NEED and the trace shows the difference.
 4. **The plan.** First as a hand-written table for the cutscene and the overlay example; then emitted by the script compiler with the pinned-set analysis and the budget report.
-5. **The first real modules.** The vehicle module for Priors-64 as the first pinned module, the pathfinder as the first cached one, and the numbers from both in the plan's catalogue.
+5. **Spans.** The optimizer pass over the macro-assembly IR, reading the probe's JSON profile; the cutscene's drive body as the first span, measured against the interpreted body.
+6. **The first real modules.** The vehicle module for Priors-64 as the first pinned module, the pathfinder as the first cached one, and the numbers from both in the plan's catalogue.
 
 Each step is checked in VICE at both REU tiers before it is called done, with the frame trace on when timing is the question.

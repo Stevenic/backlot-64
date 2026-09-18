@@ -17,14 +17,11 @@
 .export mux_chain
 .export mux_schedule
 .export spr_slots_reset
+.export spr_ready
 .export mux_first
 .import split_done
 .import split_line
 .import cut_active
-
-.ifdef FRAME_TRACE
-.import ftrace_log
-.endif
 
 .segment "LOWRAM"
 spr_ready:      .res 1          ; 1 = a finished list waits for the next vblank

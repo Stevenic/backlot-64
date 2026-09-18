@@ -7,8 +7,11 @@ BUILD   = build
 CFG     = b64.cfg
 INC     = -I include -I $(BUILD)
 
-ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_text.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s src/b64_pcm.s src/b64_uci.s src/b64_overlay.s
+ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_text.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s src/b64_pcm.s src/b64_uci.s src/b64_overlay.s src/b64_probe.s
 ENGINE_OBJS = $(patsubst src/%.s,$(BUILD)/%.o,$(ENGINE_SRCS))
+# probe builds: the same sources assembled with -DB64_PROFILE into build/prof
+PBUILD  = $(BUILD)/prof
+PENGINE_OBJS = $(patsubst src/%.s,$(PBUILD)/%.o,$(ENGINE_SRCS))
 
 REU     = $(BUILD)/world.reu
 REUSIZE = 16384         # VICE REU size in KiB; 8192 runs the stock tier
@@ -72,8 +75,8 @@ $(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUIL
 
 # p-code blobs: assembled at offset 0, packed into REU slots
 $(BUILD)/scene.bin: examples/cutscene/scene.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
-	$(AS) -t c64 -I include -I $(BUILD) -o $(BUILD)/scene.o $<
-	$(LD) -C script.cfg -o $@ $(BUILD)/scene.o
+	$(AS) -g -t c64 -I include -I $(BUILD) -o $(BUILD)/scene.o $<
+	$(LD) -C script.cfg -o $@ $(BUILD)/scene.o -Ln $(BUILD)/scene.lbl
 
 $(BUILD)/benchscripts.bin: examples/bench/scripts.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
 	$(AS) -t c64 -I include -I $(BUILD) -o $(BUILD)/benchscripts.o $<
@@ -103,6 +106,23 @@ assets: $(REU)
 # engine
 $(BUILD)/%.o: src/%.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
 	$(AS) -t c64 $(INC) -o $@ $<
+
+$(PBUILD):
+	mkdir -p $(PBUILD)
+
+$(PBUILD)/%.o: src/%.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
+	$(AS) -g -t c64 -DB64_PROFILE $(INC) -o $@ $<
+
+$(PBUILD)/%.o: examples/%/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
+	$(AS) -g -t c64 -DB64_PROFILE $(INC) -o $@ $<
+
+# a probe build of any example: make build/prof/cutscene.prg
+$(PBUILD)/%.prg: $(PENGINE_OBJS) $(PBUILD)/%.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(PBUILD)/b64_core.o $(filter-out $(PBUILD)/b64_core.o,$(PENGINE_OBJS)) $(PBUILD)/$*.o -Ln $(PBUILD)/$*.lbl
+
+# profile an example in VICE for a few seconds and print the report
+probe-%: $(PBUILD)/%.prg $(REU) $(REU8)
+	$(PY) tools/b64probe.py --vice $(PBUILD)/$*.prg --reu $(REUIMG) --reusize $(REUSIZE) --labels $(PBUILD)/$*.lbl --script-labels $(BUILD)/scene.lbl --seconds 8
 
 # example
 $(BUILD)/scroll.o: examples/scroll/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
