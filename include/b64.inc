@@ -19,6 +19,8 @@ B64_SPR_PTR_A   = B64_SCREEN_A + $3F8
 B64_SPR_PTR_B   = B64_SCREEN_B + $3F8
 B64_SPR_PTR_C   = $5C00 + $3F8       ; the cutscene bitmap's colour-cell screen
 B64_SPR_BASE    = (B64_SPRITES - $4000) / 64
+B64_MUXTAB      = $5700         ; the multiplexer's show lists, 528 bytes, in the sprite area above the 25 slots
+B64_MUXTAB_END  = $5C00
 
 ; REU registers
 REU_STATUS      = $DF00
@@ -360,7 +362,7 @@ spr_count_s     = $42           ; entries in the list being shown
 spr_base_b      = $43           ; 0 or 24: base of the build list in the arrays
 spr_base_s      = $44
 mux_next        = $45           ; next sorted position to assign during the chain
-mux_hw          = $46           ; next hardware sprite to assign, 1-7
+mux_cnt         = $46           ; entries left in the group being run (interrupt)
 b64_spr_flags   = $47           ; b64_spr_add input: bit0 multicolour, bit1 behind playfield
 mux_tmp         = $48
 irq_line        = $49           ; raster line the next chain IRQ is set for
@@ -441,11 +443,15 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global b64_turbo_slow          ; 1 MHz, badlines on: the reference machine
 .global b64_heap_alloc          ; b64_val = 24-bit length -> b64_reu, C = 1
 .global b64_heap_reset
-.global b64_pcm_play            ; X = ch, b64_reu = sample, b64_val = len24, b64_tmp = rate16, +2 vol, +3 pan
-.global b64_pcm_loop
-.global b64_pcm_stop            ; X = ch
-.global b64_pcm_volume          ; X = ch, A = 0-63
-.global b64_uci_load            ; b64_ptr = name, b64_reu = address, b64_val = len24: file -> REU, C = 1 ok
+; the C64 Ultimate module's entries: a jump table at the start of region B,
+; loaded at boot when the machine has the features, stubs (carry clear) otherwise
+b64_pcm_play    = B64_OVERLAY_B + 0     ; X = ch, b64_reu = sample, b64_val = len24, b64_tmp = rate16, +2 vol, +3 pan
+b64_pcm_loop    = B64_OVERLAY_B + 3
+b64_pcm_stop    = B64_OVERLAY_B + 6     ; X = ch
+b64_pcm_volume  = B64_OVERLAY_B + 9     ; X = ch, A = 0-63
+b64_uci_load    = B64_OVERLAY_B + 12    ; b64_ptr = name, b64_reu = address, b64_val = len24: file -> REU, C = 1 ok
+B64_ULT_ENTRIES = 5
+B64_ULT_PLAT    = B64_OVERLAY_B + 15    ; the module's copy of b64_plat
 .global b64_hud_clear
 .global b64_hud_text            ; X = column, b64_val = string pointer
 .global b64_hud_number          ; X = column, b64_val = 16-bit value
@@ -453,7 +459,6 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global b64_boot_halt           ; A = B64_ERR_*: flash the border, never return
 .global b64_bench_begin
 .global b64_bench_end           ; b64_val = elapsed cycles (24-bit)
-.global b64_bench_show          ; prints last and max at row 0
 
 ; instrumentation: a probe build (-DB64_PROFILE) records events at every
 ; FTRACE point, samples the program counter each vertical blank, counts

@@ -9,6 +9,8 @@ slot    NIGHTSET  $500000  build/night-parked.still
 slot    CRUISERGRID $503000  build/cruiser.grid
 slot    CRUISERBLOCK $504000 build/cruiser.bblock
 slot    LAMP      $505000  build/lamp.spr
+slot    BLOCK     $505040  build/block.spr   ; the multiplexer harness's sprite
+slot    ULTIMATE  $505080  build/ultimate.bin ; the C64 Ultimate module, fetched into region B at boot
 slot    CRUISEROBJ $506000 build/cruiser.b64o
 slot    SCENE     $507000  build/scene.bin
 slot    BENCH     $508000  build/benchscripts.bin

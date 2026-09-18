@@ -12,6 +12,8 @@ The engine runs on one program that probes the machine at boot and grows into wh
 | 3 | + Ultimate Audio | $DF20 idle status 0, silent test loop raises the end flag (the first test alone is not enough: a real REU mirrors its status register at $DF20, and VICE mirrors it through $DFFF) | 7 PCM channels straight from the REU: `b64_pcm_*`, the PCM opcode. |
 | 4 | + Command Interface | $DF1D reads $C9 after the unlock | Files from the Ultimate's storage into REU slots at run time: `b64_uci_load`. |
 
+The sampler and the command interface are not resident. They form the Ultimate module (`src/b64_ultimate.s`, `ultimate.cfg`), packed as the ULTIMATE slot and fetched into overlay region B by the boot probe when it finds either feature. On any other machine the probe writes a stub for each entry that returns with the carry clear, so `b64_pcm_*` and `b64_uci_load` are safe to call everywhere. The module refers to no engine address, only zero page and the hardware, so one binary serves every program. `make check` confirms the stubs on VICE; the module itself is UNTESTED until it runs on the hardware.
+
 A real 1750 is 512 KB and has only three bank bits, so it also passes the wrap test. It never gets that far: `b64_boot_check` looks for the image header at $4FF000 first, which a 512 KB unit cannot hold, and halts with the no-image colour.
 
 The probe is `b64_plat_probe` in `src/b64_plat.s`, run by `b64_init`. It leaves `b64_plat` (one bit per feature), `b64_reu_mb`, the VM budget and the heap bounds. A game reads the bits; it never probes registers itself. `make bench` prints what the probe found.

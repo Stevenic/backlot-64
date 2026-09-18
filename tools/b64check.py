@@ -259,7 +259,7 @@ def scroller(R, port):
         for f in range(800):                    # twice round the autodrive square
             v.frames(1)
             seq.append(v.word("auto_t"))
-            if f - last < 20 or v.mem(0x1B)[0]:  # about every 20 frames, when no work is pending
+            if f - last < 12 or v.mem(0x1B)[0]:  # about every 12 frames, when no work is pending
                 continue
             last = f
             front = 0x4400 if v.mem(0x1A)[0] else 0x4000
@@ -280,6 +280,38 @@ def scroller(R, port):
     R.check("scroll.picture", checked >= 10 and not wrong,
             f"{checked} frames compared with a full redraw of the world; {len(wrong)} cells wrong" + (f", first at frame, row, column {wrong[0]}" if wrong else ""))
     R.measure("scroll.frames_dropped", sum(1 for a, b in zip(seq, seq[1:]) if a == b))
+
+
+def multiplexer(R, port):
+    """The multiplexer harness (examples/mux): every hardware sprite move
+    happens after its previous occupant's last line and before its new
+    occupant's first, at normal density and overloaded; nothing is dropped
+    at normal density and something is when lines carry more than seven;
+    no sprite is ever drawn damaged; and its costs."""
+    import b64muxtiming
+    import b64irqcost
+    from b64muxcheck import judge
+    for phase, dense in (("normal", False), ("dense", True)):
+        r = b64muxtiming.run("build/mux.prg", "build/mux.lbl", TIERS[8][1], TIERS[8][0], port, frames=40, skip=100, dense=dense)
+        ok = not r["violations"] and (r["rejected"] == 0 if not dense else r["rejected"] > 0)
+        R.check(f"mux.{phase}.timing", ok, f"{r['frames']} frames, {r['writes']} sprite moves, {len(r['violations'])} timing violations, "
+                f"{r['rejected']} entries dropped" + (f"; first {r['violations'][0]}" if r["violations"] else ""))
+    v = Vice("build/mux.prg", *TIERS[8], labels="build/mux.lbl", port=port)
+    try:
+        v.frames(100)
+        damaged = 0
+        for k in range(60):
+            v.frames(1)
+            rr = v.mem("res", 13)
+            tb = rr[10] | (rr[11] << 8)
+            rows = v.shot(f"{OUT}/mux-{k:02d}.png")
+            best = min((judge(rows, t, False) for t in (tb - 1, tb - 2, tb)), key=lambda j: sum(1 for x in j.values() if x != "whole"))
+            damaged += sum(1 for x in best.values() if x == "damaged")
+    finally:
+        v.close()
+    R.check("mux.picture", damaged == 0, f"{damaged} sprites drawn damaged in 60 frames")
+    per = sorted(b64irqcost.measure("build/mux.prg", "build/mux.lbl", frames=20, port=port))
+    R.measure("mux.irq_frame", per[len(per) // 2])
 
 
 def cutscene_ticks(R, port):
@@ -361,7 +393,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer)):
             if want(name):
                 guarded(name, fn, port)
 

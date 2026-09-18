@@ -15,11 +15,12 @@
 .import mux_schedule
 .import split_done
 .import split_line
-.import spr_slots_reset
+.import spr_init
 .import cut_active
 .import cut_vblank
 .import spr_ready
 .import b64_cut_frame
+.export irq_rti
 .import cut_split
 .import mux_first
 
@@ -120,10 +121,10 @@ b64_init:
         lda #24
         sta spr_base_s
         lda #1
-        sta mux_hw
+        sta mux_cnt
         lda #255
         sta irq_line
-        jsr spr_slots_reset
+        jsr spr_init
         jsr b64_page_flush
         jsr b64_boot_check      ; no REU, no image or the wrong image: halt with the reason in the border
         jsr b64_plat_probe
@@ -293,4 +294,5 @@ irq:
         pla
         tax
         pla
+irq_rti:                        ; exported for the checks: the handler's last instruction
         rti

@@ -13,16 +13,20 @@
 ;   14    (platform flags and REU size, not a time)
 ;   15-17 one scroller prepare for a cell crossing to the right, down, and
 ;         diagonally, started at line 100 with the example tileset and world
+;   18-19 b64_spr_end for 24 sprites in the multiplexer harness's pattern:
+;         the first list (from submission order), then the next frame's
 
 .include "b64.inc"
 .include "slots.inc"
 
 .import spr_slots_reset
 .import scr_vblank
+.import spr_ready
 .export game_main
 
 .segment "GAMETOP"
 results:        .res 3*20
+bt:             .res 1
 res_i:          .res 1
 ; assembly drive state (the old engine routine, verbatim)
 cs_act_x:       .res 2
@@ -114,11 +118,61 @@ game_main:
         lda #8                  ; diagonal
         ldx #8
         jsr scroll_once
+
+        ; --- the multiplexer's decisions, two consecutive frames (the VM
+        ; ticks above finished lists nobody took: interrupts are off)
+        lda #0
+        sta spr_ready
+        lda #40
+        sta bt
+        jsr mux_list
+        lda #41
+        sta bt
+        jsr mux_list
         lda #5
         sta VIC_BORDERCOLOR     ; green: done
         jmp test_done
 test_done:                      ; the test runner breaks here
         jmp test_done
+
+; mux_list: the harness's 24 sprites at t = bt, then one b64_spr_end timed
+mux_list:
+        jsr b64_spr_begin
+        ldx #0
+@s:     stx b64_tmp+7
+        lda mx_lo,x
+        sta b64_spr_x
+        lda mx_hi,x
+        sta b64_spr_x+1
+        lda bt
+        asl
+        clc
+        adc mphase,x
+        and #127
+        clc
+        adc #60
+        sta b64_spr_y
+        inx
+        stx b64_spr_slot
+        lda #1
+        sta b64_spr_colour
+        lda #0
+        sta b64_spr_flags
+        B64_SET24 b64_reu, SLOT_BLOCK
+        jsr b64_spr_add
+        ldx b64_tmp+7
+        inx
+        cpx #24
+        bne @s
+        lda #100
+        jsr wait_line
+        jsr b64_bench_begin
+        jsr b64_spr_end
+        jsr b64_bench_end
+        jsr store
+        lda #0
+        sta spr_ready           ; as if the blank had taken it
+        rts
 
 ; scroll_once: A = dx, X = dy in pixels (a whole cell): time one prepare,
 ; then apply it as the vertical blank would
@@ -300,3 +354,16 @@ cs_drive_step:
 .segment "RODATA"
 sizes_lo:       .byte <64, <256, <1024, <4096, <8192
 sizes_hi:       .byte >64, >256, >1024, >4096, >8192
+
+mx_lo:
+.repeat 24, i
+        .byte <(24 + (i .mod 12) * 26)
+.endrepeat
+mx_hi:
+.repeat 24, i
+        .byte >(24 + (i .mod 12) * 26)
+.endrepeat
+mphase:
+.repeat 24, i
+        .byte <((i .mod 12) * 11 + (i / 12) * 64)
+.endrepeat

@@ -113,6 +113,26 @@ The new scroller was compared with the old one at every settled frame where both
 
 Dropped frames fell only from 100 to 89. The rest is the example's own per-frame work, its traffic, the sprite sort and its debug numbers, which is the next step's problem, and it is now a budgeted number rather than an unnoticed one.
 
+### 18 September, midday: room, and the multiplexer
+
+**Room first.** Every new feature was pressing against the 10 KB the resident engine is allowed. Three things moved out rather than letting the engine grow: the sampler and command-interface code, which only an Ultimate can use, became a module fetched into region B at boot when the hardware is there, with stubs elsewhere; an old text routine nothing called was removed; the scroller example's debug readout moved into the example. The engine went from 31 bytes free to about 280.
+
+**A harness before a claim.** Asked whether the new multiplexer would be the state of the art, the answer was that it could only be measured. So a harness came first: 24 sprites on paths the checker computes, first at normal density, then bunched so a line carries up to twelve. It showed at once what the traffic in the scroller example had hidden: the old multiplexer sorted from scratch every frame, 15,800 cycles for 24 sprites arriving out of order.
+
+**Three designs, measured.** The first new design did every decision and every register value in the main loop; the interrupts were cheap, but the main loop cost more than it saved. The second kept the decisions in the main loop but let the interrupts read through one index byte per sprite, with a routine per hardware sprite generated into spare RAM at start. That is the one kept.
+
+| 24 sprites | Previous | New |
+|---|---|---|
+| Main-loop cycles (`b64_spr_end`, interrupts off) | 8,172 | 5,864 |
+| Interrupt cycles per frame | 8,891 | 6,428 |
+| Overloaded, 60 frames: sprites drawn damaged | 30 | 0 |
+
+For the cutscene's nine sprites the saving is a transfer, not a gain: the main-loop tick rose by about 1,000 cycles and the interrupts fell by as much. The budget moved with the reason written down.
+
+**How it was proven.** Screenshots turned out to be the wrong instrument: in a few frames VICE's monitor screenshot held rows that differed from what the frame had drawn, while the registers and the earlier canvas showed every sprite in place. The check was rebuilt on the invariant itself: the timing check breaks at every generated routine and requires each hardware sprite to be moved only after its previous occupant's last line and before its new occupant's first. 40 frames at normal density, 40 overloaded: no violation.
+
+**What went wrong on the way,** all caught by measurement: the routine table lost a carry for sprites 4 to 7, so their entries ran sprite 0's routine and cut others short; the harness's own soak loop made the engine skip every other frame; the benchmark reset forced the routines to be regenerated on every script tick; an empty list stored the accumulator's leftover as its length. The profiler had been lying too: its sampler wrote two zero-page bytes from its interrupt without saving them, which is why the scroller's profile build ran one frame in four.
+
 ---
 
 ## What went wrong, and what caught it
@@ -136,21 +156,26 @@ Dropped frames fell only from 100 to 89. The rest is the example's own per-frame
 | Timings from the monitor's run-until-return were wrong | They contradicted the profiler | That command stops at the first return from any subroutine; timings now break at the caller's next instruction |
 | The scroller's profiling build ran one frame in four or five | Counting callbacks per frame | The probe's sampler wrote two bytes of shared zero page from its interrupt without saving them, corrupting whatever it interrupted. It now writes through patched addresses; a check requires a clean profile of the scroller |
 | The first fix of the sampler wrote half its samples over the opcode counters | The next profile: script opcodes counted in a program with no scripts | A carry handled wrongly in the address arithmetic; fixed, and the same check catches it |
+| The new multiplexer cut sprites short | A per-sprite judge on the harness's screenshots | The table of routine addresses lost a carry for sprites 4 to 7; fixed |
+| The harness itself made the engine skip every other frame | Counting lists per frame | Its measuring loop now stops before the vertical blank |
+| Screenshots disagreed with the registers in some frames | Stepping one frame and screenshotting at several raster lines | The multiplexer check now tests the timing invariant from the registers; screenshots only look for damage |
+| The first new multiplexer design cost more than it saved | The benchmark, interrupts off | Redesigned: decisions in the main loop, copies in the interrupt |
 
 ---
 
-## Where it stands, 18 September 2026, after the fills
+## Where it stands, 18 September 2026, after the fills and the multiplexer
 
 | | |
 |---|---|
 | Elapsed | 14 September, 11:55 PM, to 18 September, 4:30 AM; about 105 requests from Steven |
-| Engine | 5,600 lines of 6502 assembly; 9,676 of its 10,227 resident bytes used |
+| Engine | 5,700 lines of 6502 assembly; 9,892 of its 10,227 resident bytes used |
 | Tools | 3,600 lines of Python: packers, quantisers, the VICE harness, the probe reader |
 | Docs | 1,850 lines, audited against primary sources |
-| Checks | 55, passing locally in under 30 seconds and on every push |
+| Checks | 62, passing locally in about a minute and on every push |
 | Scroller | worst cell crossing 5,754 cycles against a 6,000 target; the example still drops 89 frames in 800 |
 | Cutscene frame | 8,889 cycles typical, 15,692 on effect frames, of 19,656 |
 | Script VM | 82 to 118 cycles per opcode |
+| Multiplexer | 24 sprites: 5,864 main-loop and 6,428 interrupt cycles; overloaded lines drop sprites whole |
 | Not yet run on hardware | the C64 Ultimate tiers, which wait for the machine |
 
 ---

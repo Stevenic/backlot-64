@@ -50,38 +50,3 @@ b64_bench_end:
         lda b64_val+2
         sta bench_max+2
 @done:  rts
-
-; HUD: "LAST nnnnn  MAX nnnnn"
-b64_bench_show:
-        lda b64_val
-        pha
-        lda b64_val+1
-        pha
-        lda #<label_last
-        sta b64_val
-        lda #>label_last
-        sta b64_val+1
-        ldx #0
-        jsr b64_hud_text
-        pla
-        sta b64_val+1
-        pla
-        sta b64_val
-        ldx #5
-        jsr b64_hud_number
-        lda #<label_max
-        sta b64_val
-        lda #>label_max
-        sta b64_val+1
-        ldx #12
-        jsr b64_hud_text
-        lda bench_max
-        sta b64_val
-        lda bench_max+1
-        sta b64_val+1
-        ldx #16
-        jmp b64_hud_number
-
-.segment "RODATA"
-label_last:     .byte "LAST ", 0
-label_max:      .byte "MAX ", 0

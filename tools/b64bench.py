@@ -28,6 +28,7 @@ TESTS = [
     None,                                       # 14: platform flags, not a time
     ("scroll_right", "scroll prepare, crossing right", 1), ("scroll_down", "scroll prepare, crossing down", 1),
     ("scroll_diag", "scroll prepare, crossing diagonally", 1),
+    ("mux_first", "multiplexer, 24 sprites, first list", 24), ("mux_next", "multiplexer, 24 sprites, next frame", 24),
 ]
 
 

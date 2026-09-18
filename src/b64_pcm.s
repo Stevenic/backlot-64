@@ -20,23 +20,23 @@
 ;
 ; Every entry is a no-op without the module (b64_plat bit), so a game or a
 ; script can ask for a sound on any machine.
+; Part of the C64 Ultimate module (src/b64_ultimate.s), not the resident engine.
 ; UNTESTED on hardware as of 2026-09-17: VICE does not emulate the module.
 
 .include "b64.inc"
 
-.import b64_plat
 
-.export b64_pcm_play
-.export b64_pcm_loop
-.export b64_pcm_stop
-.export b64_pcm_volume
+.export pcm_play
+.export pcm_loop
+.export pcm_stop
+.export pcm_volume
 
 .segment "CODE"
 pcm_ch = b64_ptr                ; the channel's registers (indirect addressing needs zero page)
 
 ; channel_ptr: X = channel 0-6 -> pcm_ch = $DF20 + X*32.  C = 0 if absent.
 channel_ptr:
-        lda b64_plat
+        lda B64_ULT_PLAT        ; the module's copy of b64_plat: loaded for the interface alone, it must not touch $DF20
         and #B64_PLAT_AUDIO
         beq @no
         txa
@@ -57,10 +57,10 @@ channel_ptr:
 @no:    clc
         rts
 
-; b64_pcm_play: X = channel, b64_reu = sample address, b64_val = length
+; pcm_play: X = channel, b64_reu = sample address, b64_val = length
 ; (24-bit), b64_tmp/b64_tmp+1 = rate divider, b64_tmp+2 = volume 0-63,
 ; b64_tmp+3 = pan 0-15.  8-bit PCM, one shot.
-b64_pcm_play:
+pcm_play:
         jsr channel_ptr
         bcc @done
         jsr set_common
@@ -69,11 +69,11 @@ b64_pcm_play:
         sta (pcm_ch),y
 @done:  rts
 
-; b64_pcm_loop: as play, plus b64_tmp+4..6 = repeat A (24-bit) and
+; pcm_loop: as play, plus b64_tmp+4..6 = repeat A (24-bit) and
 ; b64_tmp+7 / b64_len = repeat B lo/mid, b64_len+1 = hi... too many inputs:
 ; loops repeat from A = 0 to B = length, which is what a looping ambience
 ; wants.
-b64_pcm_loop:
+pcm_loop:
         jsr channel_ptr
         bcc @done
         jsr set_common
@@ -98,8 +98,8 @@ b64_pcm_loop:
         sta (pcm_ch),y
 @done:  rts
 
-; b64_pcm_stop: X = channel
-b64_pcm_stop:
+; pcm_stop: X = channel
+pcm_stop:
         jsr channel_ptr
         bcc @done
         lda #0
@@ -107,8 +107,8 @@ b64_pcm_stop:
         sta (pcm_ch),y
 @done:  rts
 
-; b64_pcm_volume: X = channel, A = volume 0-63
-b64_pcm_volume:
+; pcm_volume: X = channel, A = volume 0-63
+pcm_volume:
         pha
         jsr channel_ptr
         pla

@@ -296,7 +296,7 @@ frame:
         jsr frame_addr
         jsr b64_spr_pinned
         jsr traffic_frame
-        jmp b64_bench_show
+        jmp bench_show
 
 ; frame_addr: A = frame index in the sprite library -> b64_reu = SLOT_SPRITES0 + A*64
 frame_addr:
@@ -326,3 +326,40 @@ frame_addr:
         adc #0
         sta b64_reu+2
         rts
+
+.segment "GAME"
+; HUD: "LAST nnnnn  MAX nnnnn"
+; the example's own readout (moved out of the engine: only this example shows it)
+bench_show:
+        lda b64_val
+        pha
+        lda b64_val+1
+        pha
+        lda #<label_last
+        sta b64_val
+        lda #>label_last
+        sta b64_val+1
+        ldx #0
+        jsr b64_hud_text
+        pla
+        sta b64_val+1
+        pla
+        sta b64_val
+        ldx #5
+        jsr b64_hud_number
+        lda #<label_max
+        sta b64_val
+        lda #>label_max
+        sta b64_val+1
+        ldx #12
+        jsr b64_hud_text
+        lda bench_max
+        sta b64_val
+        lda bench_max+1
+        sta b64_val+1
+        ldx #16
+        jmp b64_hud_number
+
+.segment "GAME"
+label_last:     .byte "LAST ", 0
+label_max:      .byte "MAX ", 0

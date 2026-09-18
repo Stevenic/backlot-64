@@ -49,7 +49,7 @@ The map in `PLAN.md` section 5, with the current measured sizes.
 | $C100-$C8FF | 2 KB | Page cache: eight 256-byte copies of REU pages | yes, per page |
 | $C900-$C9FF | 256 B | The VM's vector table | no |
 | $CA00-$CBFF | 512 B | Scroller tables, generated | no |
-| $CC00-$CFFF | 1 KB | Overlay region B | yes, whole |
+| $CC00-$CFFF | 1 KB | Overlay region B: the Ultimate module on a C64 Ultimate, stubs elsewhere | yes, whole |
 | $D000-$DFFF | 4 KB | I/O | |
 | $E000-$FFF9 | 8 KB | Game hot state: entity table, player, mission registers | parts stream (section 5) |
 

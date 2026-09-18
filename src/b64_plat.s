@@ -20,6 +20,7 @@
 ;   $DF1C  UCI status (read) / control (write); $DF1D id, reads $C9.
 
 .include "b64.inc"
+.include "slots.inc"
 
 .export b64_plat_probe
 .export b64_turbo_set
@@ -29,7 +30,6 @@
 .export b64_heap_reset
 
 .import vm_budget_max
-.import uci_detect
 
 .segment "LOWRAM"
 b64_plat:       .res 1          ; B64_PLAT_* bits
@@ -152,6 +152,8 @@ b64_plat_probe:
         ora #B64_PLAT_UCI
         sta b64_plat
 @nouci:
+        ; --- the C64 Ultimate module into region B, or stubs that say no
+        jsr ult_install
         ; --- scale the engine
         ldx #64                 ; VM opcodes per thread per frame at 1 MHz
         lda b64_plat
@@ -160,6 +162,53 @@ b64_plat_probe:
         ldx #255
 :       stx vm_budget_max
         jsr b64_heap_reset
+        rts
+
+; uci_detect: C = 1 when the command interface answers.  Sends the unlock
+; first, harmless where it means nothing.  (The rest of the interface is in
+; the Ultimate module.)
+UCI_UNLOCK1     = $D038
+UCI_UNLOCK2     = $D036
+uci_detect:
+        lda #$AB
+        sta UCI_UNLOCK1
+        lda #$CD
+        sta UCI_UNLOCK2
+        lda B64_UCI_ID
+        cmp #$C9
+        bne @no
+        lda #$04                ; abort anything pending
+        sta B64_UCI_CTRL
+        sec
+        rts
+@no:    clc
+        rts
+
+; ult_install: the machine has the sampler or the command interface: fetch
+; the Ultimate module into region B.  Otherwise every entry of its jump
+; table becomes CLC / RTS, so a call returns "not done" on any machine.
+ult_install:
+        lda b64_plat
+        and #B64_PLAT_AUDIO|B64_PLAT_UCI
+        beq @stubs
+        B64_SET24 b64_reu, SLOT_ULTIMATE
+        B64_SET16 b64_ptr, B64_OVERLAY_B
+        B64_SET16 b64_len, $0380
+        jsr b64_fetch
+        lda b64_plat
+        sta B64_ULT_PLAT
+        rts
+@stubs: ldx #B64_ULT_ENTRIES*3-3
+:       lda #$18                ; CLC
+        sta B64_OVERLAY_B,x
+        lda #$60                ; RTS
+        sta B64_OVERLAY_B+1,x
+        dex
+        dex
+        dex
+        bpl :-
+        lda #0
+        sta B64_ULT_PLAT
         rts
 
 ; b64_turbo_set: A = $D031 value (speed index 0-15, bit 7 = badlines off).

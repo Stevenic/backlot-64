@@ -36,7 +36,9 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 **The showcase.** With the cruiser stopped and its lights on: each frame shows exactly one lamp, each lamp in its own colour at the offset the object file declares; the pattern changes every 8 frames; every frame relights at least 200 pixels, and none beyond the light's declared radius; the park is exact after the lights go off. At both tiers.
 
-**The scroller.** The autodrive example runs twice round its square. About every 20 frames, on a settled frame, its screen buffer and colour RAM are read and compared with a full redraw of the world at the camera, computed in Python from the world map and the tileset. The count of frames that go without a callback is budgeted too.
+**The scroller.** The autodrive example runs twice round its square. About every 12 frames, on a settled frame, its screen buffer and colour RAM are read and compared with a full redraw of the world at the camera, computed in Python from the world map and the tileset. The count of frames that go without a callback is budgeted too.
+
+**The multiplexer.** The harness (`examples/mux`) runs 24 sprites on paths the checker can reproduce, first at most four to a line, then bunched so a line carries up to twelve. `tools/b64muxtiming.py` breaks at every generated sprite routine and checks that each hardware sprite is moved only after its previous occupant's last line and before its new occupant's first. At normal density nothing may be dropped; overloaded, something must be; and no sprite may be drawn damaged in 60 captured frames. `tools/b64irqcost.py` measures the interrupt cycles per frame.
 
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
 
@@ -49,6 +51,8 @@ A change is not done until `make check` passes. A change that moves a number in 
 | `bench.scroll_*` | the benchmark program: one prepare for a crossing right, down and diagonally, interrupts off |
 | `scroll.worst_frame` | the autodrive scroller's own maximum, reset after the first full draw, over twice round its square |
 | `scroll.frames_dropped` | frames without a callback in the same 800 |
+| `bench.mux_*` | the benchmark program: `b64_spr_end` for the harness's 24 sprites, interrupts off |
+| `mux.irq_frame` | the emulator's cycle counter from the interrupt handler's entry to its RTI, summed per frame, median of 20 |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.
 
@@ -60,11 +64,12 @@ make check CHECKFLAGS=--keep # keep the frames in build/check even when it passe
 python3 tools/b64check.py --tier 8 --only showcase,static
 ```
 
-The names for `--only` are `static`, `bench`, `overlay`, `cutscene`, `showcase`, `boot`, `scroller`, `ticks` and `probe`. On a failure the frames it looked at stay in `build/check`, and the CI run uploads them.
+The names for `--only` are `static`, `bench`, `overlay`, `cutscene`, `showcase`, `boot`, `scroller`, `ticks`, `probe` and `mux`. On a failure the frames it looked at stay in `build/check`, and the CI run uploads them.
 
 ## What it does not check
 
 - Anything VICE cannot emulate: the turbo, Ultimate Audio and the command interface. Those stay marked UNTESTED until they have run on a C64 Ultimate (`docs/ULTIMATE.md`).
 - The joystick-driven examples beyond the autodrive build.
 - Sound.
+- Pixel-exact screenshots at every instant. A monitor screenshot taken in the lower border can, in some frames, hold rows that differ from what the frame drew; the multiplexer's correctness is therefore checked on its timing, from the registers, and its pictures are checked only for damaged sprites, never for absent ones.
 - Real hardware timing. VICE's x64sc is cycle-exact for the stock machine, which is why tier 0 is proven there, but the first hardware run (roadmap step 5) is its own check.

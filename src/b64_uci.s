@@ -19,14 +19,13 @@
 ; Command: target byte, command byte, arguments.  DOS target 1:
 ;   $02 open (attrib $01 = read, then the name)   $03 close
 ;   $21 load REU: address32 LSB first, length32 LSB first   (from the open file)
+; Part of the C64 Ultimate module (src/b64_ultimate.s); detection is in b64_plat.s.
 ; UNTESTED on hardware as of 2026-09-17: VICE does not emulate the interface.
 
 .include "b64.inc"
 
-.import b64_plat
 
-.export uci_detect
-.export b64_uci_load
+.export uci_load
 
 UCI_UNLOCK1     = $D038
 UCI_UNLOCK2     = $D036
@@ -42,28 +41,11 @@ uci_len:        .res 4
 
 .segment "CODE"
 
-; uci_detect: C = 1 when the interface answers.  Sends the unlock first,
-; harmless where it means nothing.
-uci_detect:
-        lda #$AB
-        sta UCI_UNLOCK1
-        lda #$CD
-        sta UCI_UNLOCK2
-        lda B64_UCI_ID
-        cmp #$C9
-        bne @no
-        lda #$04                ; abort anything pending
-        sta B64_UCI_CTRL
-        sec
-        rts
-@no:    clc
-        rts
-
-; b64_uci_load: b64_ptr = filename (0-terminated ASCII, at most 64 chars),
+; uci_load: b64_ptr = filename (0-terminated ASCII, at most 64 chars),
 ; b64_reu = REU address, b64_val = 24-bit length.  Opens, loads, closes.
 ; C = 1 and uci_status = '0' on success.  A stock machine returns C = 0.
-b64_uci_load:
-        lda b64_plat
+uci_load:
+        lda B64_ULT_PLAT
         and #B64_PLAT_UCI
         bne :+
         clc

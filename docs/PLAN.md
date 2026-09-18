@@ -111,13 +111,13 @@ A full tileset switch, for interiors or a different world, is a DMA of 10 KB, ab
 
 ### 3.4 Sprites
 
-Eight hardware sprites, seven of them multiplexed over 24 virtual sprites, sorted by Y each frame with an insertion sort, repositioned from a chain of raster interrupts. Hardware sprite 0 is pinned for the object that must never flicker, the player; two more pinned slots are planned.
+Eight hardware sprites, seven of them multiplexed over 24 virtual sprites; hardware sprite 0 is pinned for the object that must never flicker, the player. Every decision is made in the main loop by `b64_spr_end`: the sort order is kept from frame to frame and re-sorted by y; each entry takes the hardware sprite freed longest ago; an entry whose sprite is still drawing its previous occupant too close to the entry's top is dropped whole, so an overloaded line loses sprites but never shows one cut short; and consecutive entries share one raster interrupt while all their previous occupants end early enough. The interrupts only copy: each entry is one index byte, and a group runs through routines generated at start, one per hardware sprite with its registers built in, each chaining to the next. A chain interrupt that finds the next group already due runs it at once. (Roadmap step 9, 2026-09-18; the design and its measurements are in `docs/JOURNAL.md`.)
 
 **Frames are streamed per slot, not loaded in banks.** Each of the 25 sprite slots owns 64 bytes of VIC RAM. A game submits a sprite with its slot number and the 24-bit REU address of the frame it wants; the engine compares that address with what the slot holds and DMAs the 64 bytes only when it differs. An entity keeps the same slot from frame to frame, so a car driving straight costs nothing and a car turning costs one 100-cycle DMA. The resident sprite memory is 1.6 KB, and the number of distinct sprite designs that can be on screen at once is simply the number of slots. This is what lets a game have 150 vehicle types in traffic with no bank juggling. A worst case where every visible sprite changes frame in the same frame is 24 DMAs, about 2,400 cycles, and does not happen in practice.
 
 **Beacon overlays.** A sprite can carry a second, single-colour sprite attached at an offset: a light bar, a rotor, a wake. The overlay takes one slot and one virtual sprite, follows its parent's position, and can step through a pattern table of (left, centre, right, frames) entries, each light one of the 16 colours or off. A hires overlay has one colour at a time (its own colour register), so a bar whose left and right lamps differ in colour shows them on alternate frames or uses a second overlay. Patterns are data. Emergency services get distinct rhythms so a player can tell a police cruiser from an ambulance from a fire engine at the edge of the screen without reading the sprite. A hires overlay can use any of the 16 colours, which is how a red and blue light bar sits on a white multicolour car. Cost: one slot per beacon, and about 30 cycles per frame per beacon for the pattern step. The lighting module treats an active beacon as a light source, so at night the walls flash with it.
 
-Budget: 24 sprites, about 3,000 cycles including the sort and the interrupt chain. Measured E3: a static frame with 20 multiplexed cars costs about 1,700 cycles.
+Budget, measured in the harness (`examples/mux`, `make check`): 24 sprites cost 5,864 cycles in `b64_spr_end`, interrupts off, and 6,428 cycles of interrupts per frame including the blank's other work and the status-row split; the previous multiplexer cost 8,172 and 8,891. Overloaded, 12 sprites bunched into 24 lines, it shows the seven a line can hold and drops the rest whole; the previous one drew some damaged.
 
 ### 3.5 Raster effects
 
@@ -395,7 +395,8 @@ The engine reserves fixed regions. The game gets everything else.
 | $4000-$43FF | 1 KB | engine | Screen A |
 | $4400-$47FF | 1 KB | engine | Screen B |
 | $4800-$4FFF | 2 KB | engine | Active charset |
-| $5000-$5BFF | 3 KB | engine | Sprite slots: 25 in use (1.6 KB), 64 bytes each; a cutscene's colour cells sit above at $5C00 |
+| $5000-$563F | 1.6 KB | engine | Sprite slots: 25, 64 bytes each |
+| $5700-$5BFF | 1.25 KB | engine | The multiplexer: two halves of the list, the show order, the groups, and the per-sprite interrupt routines generated at start; a cutscene's colour cells sit above at $5C00 |
 | $6000-$7FFF | 8 KB | game | Except $7FFF, the VIC idle byte, which the engine keeps at 0 |
 | $8000-$9FFF | 8 KB | engine | Overlay region A, managed by the overlay loader |
 | $A000-$BFFF | 8 KB | engine | Active metatile library: by row at $A000, by column at $B000 |
@@ -403,7 +404,7 @@ The engine reserves fixed regions. The game gets everything else.
 | $C100-$C8FF | 2 KB | engine | Page cache: eight 256-byte copies of REU pages |
 | $C900-$C9FF | 256 B | engine | The VM's vector table, copied there at script start |
 | $CA00-$CBFF | 512 B | engine | Scroller tables (metatile id to library address), generated by `b64_redraw` |
-| $CC00-$CFFF | 1 KB | engine | Overlay region B, for small modules that must coexist with a region A module |
+| $CC00-$CFFF | 1 KB | engine | Overlay region B. On a C64 Ultimate it holds the Ultimate module (the sampler and the command interface), fetched at boot; elsewhere a table of stubs that answer "not available" |
 | $D000-$DFFF | 4 KB | I/O | VIC, SID, CIA, REU registers at $DF00 |
 | $E000-$FFF9 | 8 KB | game | Entity tables and game state |
 
@@ -540,7 +541,6 @@ b64_cut             Blank one frame and redraw. For scene changes.
 ### Text
 
 ```
-b64_text            A = row, X = column, b64_ptr = string. Draws to the HUD rows.
 b64_number          A = row, X = column, b64_val (24-bit). Right-aligned decimal.
 b64_dialog          b64_ptr = text, A = portrait id. Opens the dialogue box.
 b64_dialog_close
@@ -576,7 +576,6 @@ b64_event           A = event id, X = entity. Wakes threads waiting on it. Calle
 ```
 b64_bench_begin     Start the CIA cycle counter.
 b64_bench_end       Stop and return elapsed cycles in b64_val.
-b64_bench_show      Print the last measurement to the HUD.
 ```
 
 ---

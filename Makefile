@@ -9,7 +9,7 @@ QUANT   = tools/b64quant.py tools/b64tileset.py tools/b64palette.py tools/b64for
 CFG     = b64.cfg
 INC     = -I include -I $(BUILD)
 
-ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s src/b64_pcm.s src/b64_uci.s src/b64_overlay.s src/b64_probe.s
+ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s   src/b64_overlay.s src/b64_probe.s
 ENGINE_OBJS = $(patsubst src/%.s,$(BUILD)/%.o,$(ENGINE_SRCS))
 # probe builds: the same sources assembled with -DB64_PROFILE into build/prof
 PBUILD  = $(BUILD)/prof
@@ -30,7 +30,7 @@ VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 .PHONY: all assets run-scroll shot-scroll palette clean check bench
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -70,10 +70,21 @@ $(BUILD)/night-parked.still: $(BUILD)/cruiser.b64o
 $(BUILD)/lamp.spr: | $(BUILD)
 	$(PY) -c "rows=[0]*21; rows[4:8]=[0xff]*4; open('$@','wb').write(bytes(sum(([r,0,0] for r in rows),[])+[0]))"
 
+# the C64 Ultimate module: sampler and command interface, for region B
+$(BUILD)/ultimate.bin: src/b64_ultimate.s src/b64_pcm.s src/b64_uci.s include/b64.inc ultimate.cfg | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $(BUILD)/ult_jmp.o src/b64_ultimate.s
+	$(AS) -g -t c64 $(INC) -o $(BUILD)/ult_pcm.o src/b64_pcm.s
+	$(AS) -g -t c64 $(INC) -o $(BUILD)/ult_uci.o src/b64_uci.s
+	$(LD) -C ultimate.cfg -o $@ $(BUILD)/ult_jmp.o $(BUILD)/ult_pcm.o $(BUILD)/ult_uci.o -m $(BUILD)/ultimate.map
+
+# a solid hires block, the multiplexer harness's sprite
+$(BUILD)/block.spr: | $(BUILD)
+	$(PY) -c "open('$@','wb').write(bytes([255]*63+[0]))"
+
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -171,6 +182,15 @@ $(BUILD)/scroll.prg: $(ENGINE_OBJS) $(BUILD)/scroll.o $(CFG)
 
 $(BUILD)/scroll-auto.prg: $(ENGINE_OBJS) $(BUILD)/scroll-auto.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/scroll-auto.o -Ln $(BUILD)/scroll-auto.lbl
+
+$(BUILD)/mux.o: examples/mux/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $@ $<
+
+$(BUILD)/mux.prg: $(ENGINE_OBJS) $(BUILD)/mux.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/mux.o -m $(BUILD)/mux.map -Ln $(BUILD)/mux.lbl
+
+run-mux: $(BUILD)/mux.prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/mux.prg
 
 $(BUILD)/cutscene.o: examples/cutscene/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -o $@ $<
