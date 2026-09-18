@@ -196,7 +196,7 @@ A module is one or more `.s` files assembled into a segment with a 16-byte heade
 | zero page | Bytes of zero page it needs, allocated by the packer |
 | cycles per frame | Fixed cost, measured by the benchmark harness |
 | cycles per entity | Marginal cost per active entity it processes, measured |
-| hooks | Which frame contract points it attaches to: frame, entity, border, init |
+| hooks | Which frame contract points it attaches to: frame, entity, border, init; an entity hook is per-tick or staggered (one entity in three per tick, section 6.2) |
 | entry table | Exported routines, by index, so callers do not need its addresses |
 | syscall table | The subset of entries exposed to scripts as VM opcodes, with argument signatures |
 
@@ -457,6 +457,17 @@ A PAL display refreshes 50.12 times a second, so the rates that lock without jud
 - **The game tick runs at a rate the game declares per mode: every frame (50) or every second frame (25).** The tick is the callback: scripts, modules, entity updates and the sprite list. A game may let the platform tier pick the rate at boot, 25 on a stock machine and 50 on the Ultimate, but never changes it inside a mode, so no module needs a variable time step.
 
 **Motion at 50 on a 25 tick.** Each tick gives the camera and every sprite a position; the frame between two ticks shows each at the midpoint of its last two positions. That costs one frame (20 ms) of latency and never overshoots, so a stop, a turn and a park stay pixel-exact, which extrapolation cannot promise. The tick prepares both frames: the midpoint sprite list (a copy with half-steps, re-sorted, since a half-step can swap two sprites' order) and any scroll preparation the midpoint camera needs, so the interrupt only chooses which prepared frame to show. A 25 tick has two frames of time; it overruns only past that, and an overrun slows the game rather than skipping, as today, with the probe's histogram showing it.
+
+**One tick every N frames.** The mechanism is written for a tick every N frames, with the frames between showing each position at k/N of the way from its last position to its new one. Only N = 1 and N = 2 are supported and checked. N = 3 (16.7 Hz) is not a mode the engine offers, because it hurts what a driving game needs most:
+
+- Input is sampled every 60 ms and the interpolation adds two frames, so a turn reaches the screen up to about 100 ms after the stick moves, against about 60 ms at 25 and 20 ms at 50.
+- A car at 4 pixels a frame moves 12 pixels a tick, more than a cell, so physics would need swept collision to stop cars passing through thin walls.
+- Thirds need a table or fractional positions, where the midpoint is a shift.
+- Falling back to it when a 25 tick overruns would change the rate inside a mode, which is what the one-rate-per-mode rule exists to prevent.
+
+A non-action mode, a map screen or a turn-based screen, may use N = 3; the engine does not test it.
+
+**Staggered updates, not slower ticks.** Where a game cannot fit its work into a 25 tick, the saving comes from the slow systems, not the frame: physics, input and the player's entity run every tick, and AI decisions and path requests run for one entity in three each tick, so each thinks about 8 times a second at a 25 tick and the crowd costs a third. An entity's slot in the rotation is its index modulo 3, so the load is even and no entity waits longer than three ticks. Modules declare which of their hooks are per-tick and which are staggered, and the packer's budget counts a staggered hook at a third of its per-entity cost. Built with the entity table (roadmap step 14).
 
 **Budgets as deadlines.** Work that can use whatever time is left, the VM first, runs until a raster line rather than for a count of opcodes or cycles: one compare of the raster register, about 4 cycles against 82 to 118 per opcode. The same build then uses the headroom a 16 MB machine, a 25 tick or a 64 MHz turbo gives it, without the boot probe guessing at speed tables that differ between boards and change in the Ultimate's menu. The CIA timers keep their 1 MHz clock under turbo (`ULTIMATE.md`), so the probe measures the frame in time on every tier.
 
