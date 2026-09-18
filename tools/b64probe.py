@@ -183,6 +183,8 @@ def main():
         b = from_host(a.host, a.password, a.run)
     elif a.file:
         b = open(a.file, "rb").read()
+        if b[:4] != b"B64P" and b[2:6] == b"B64P":
+            b = b[2:]                       # a VICE save carries a two-byte load address
     else:
         ap.error("one of --vice, --host, --file")
     labels = read_labels(a.labels)
