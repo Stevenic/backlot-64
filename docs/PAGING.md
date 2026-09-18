@@ -16,7 +16,8 @@ The one idea underneath all of them: a byte is in RAM because it is needed this 
 | DMA in the displayed area | about 93 percent of full rate (badlines, measured in VICE; lower again with sprites on the lines) |
 | Largest change to the picture per frame, invisibly | about 6 KB, in the border |
 | 256-byte page | 361 cycles (measured) |
-| 8 KB overlay | 8,423 cycles in the border, 9,053 in the display (measured) |
+| 8 KB bitmap or stash | 8,423 cycles in the border, 9,053 in the display (measured) |
+| 6 KB overlay (region A) | 6,335 to 6,881 cycles, as more or less of it meets the display's badlines (measured) |
 | Camera speed | 2 px per frame, so one cell every 4 frames, one sector every 512 frames |
 
 Two consequences. Anything that touches the picture moves in the border, and the border holds about 6 KB, so a bigger change is split across frames or hidden under a blanked frame. Anything that does not touch the picture can move whenever the engine has cycles, and the camera gives seconds of warning for everything the world will need.
@@ -89,11 +90,11 @@ The playfield scroller (E1) is this strategy with metatiles: the screen matrix s
 
 **For:** a screen the player opens and closes: a detail screen, the phone, a garage, the pause menu, the map, the title.
 
-**How:** the packer builds one REU slot holding the screen's overlay code, its screen data, its text and its font. Opening the screen is one 8 KB DMA into an overlay region under a blanked frame; closing it is forgetting it. Nothing about any screen is resident while it is closed. A scroll region inside the screen uses 2.1; its records use 2.5.
+**How:** the packer builds one REU slot holding the screen's overlay code, its screen data, its text and its font. Opening the screen is one DMA of up to 6 KB into region A under a blanked frame; closing it is forgetting it. Nothing about any screen is resident while it is closed. A scroll region inside the screen uses 2.1; its records use 2.5.
 
 **Cost:** about 9 ms to open (9,013 cycles measured), zero per frame, zero resident when closed.
 
-**Built (loader):** `b64_overlay_load` and `tools/b64overlay.py`; `examples/overlay` is the proof. Measured 9,013 cycles for an 8 KB load into region A. The packaging of screen data and text with the code is the part still open.
+**Built (loader):** `b64_overlay_load` and `tools/b64overlay.py`; `examples/overlay` is the proof. Measured 9,013 cycles for an 8 KB load into region A while it was 8 KB; 6,335 to 6,881 for the 6 KB region since 2026-09-18. The packaging of screen data and text with the code is the part still open.
 
 ### 2.7 Stash and restore
 

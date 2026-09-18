@@ -8,7 +8,7 @@
 ;   $E001 number of overlay calls made (5)
 ;   $E002 number of DMAs the loader performed (4)
 ;   $E003 last byte of the window after the final load ($B2)
-;   $E004-$E006 cycles for one 8 KB overlay load
+;   $E004-$E006 cycles for one 6 KB overlay load
 
 .include "b64.inc"
 .include "slots.inc"
@@ -28,7 +28,7 @@ game_main:
         ; 1
         jsr b64_bench_begin
         B64_SET24 b64_reu, SLOT_OVL1
-        B64_SET16 b64_len, $2000
+        B64_SET16 b64_len, $1800
         jsr b64_overlay_load
         jsr b64_bench_end
         lda b64_val
@@ -40,28 +40,28 @@ game_main:
         jsr B64_OVERLAY_A
         ; 2
         B64_SET24 b64_reu, SLOT_OVL2
-        B64_SET16 b64_len, $2000
+        B64_SET16 b64_len, $1800
         jsr b64_overlay_load
         jsr B64_OVERLAY_A
         ; 1 again
         B64_SET24 b64_reu, SLOT_OVL1
-        B64_SET16 b64_len, $2000
+        B64_SET16 b64_len, $1800
         jsr b64_overlay_load
         jsr B64_OVERLAY_A
         ; 2 again
         B64_SET24 b64_reu, SLOT_OVL2
-        B64_SET16 b64_len, $2000
+        B64_SET16 b64_len, $1800
         jsr b64_overlay_load
         jsr B64_OVERLAY_A
         ; 2 once more: resident, no DMA
         B64_SET24 b64_reu, SLOT_OVL2
-        B64_SET16 b64_len, $2000
+        B64_SET16 b64_len, $1800
         jsr b64_overlay_load
         jsr B64_OVERLAY_A
 
         lda ovl_loads
         sta $E002
-        lda B64_OVERLAY_A+$1FFF
+        lda B64_OVERLAY_A+$17FF
         sta $E003
         lda #5
         sta VIC_BORDERCOLOR     ; green: done

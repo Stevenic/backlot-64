@@ -67,6 +67,8 @@ shim_cells:     .res 238        ; (column, row) pairs
 shim_lo:        .res 119        ; colour-cell address of each cell, low byte
 shim_hi:        .res 119        ; high byte; bit 7 set while the cell is under a parked block
 shim_on:        .res 1
+shim_due:       .res 1          ; a shimmer step is waiting to run
+cut_heavy:      .res 1          ; 1 when this tick drew text: the shimmer's step waits a frame
 shim_parked:    .res 1          ; 1 while an object block covers part of the still
 shim_rx0:       .res 1          ; the parked rectangle in cells: x0, x1 (exclusive), y0, y1
 shim_rx1:       .res 1
@@ -446,6 +448,8 @@ text_colours:
 
 ; b64_cut_text: A = row (20-24), X = column, string at (b64_val)
 b64_cut_text:
+        ldy #1
+        sty cut_heavy           ; the shimmer waits a frame (b64_cut_frame)
         sec
         sbc #20
         ; ptr = CUT_TEXT + 800 + (row-20)*40 + col
@@ -634,13 +638,25 @@ shim_mask:
 ; so the wet road moves.  It runs before the reflection rows are drawn, so
 ; the change lands within the frame; and it runs here, not in the vertical
 ; blank, because 80 cells cost about 4,000 cycles and the interrupt must
-; stay short.  Cells under a parked block are flagged and skipped.
+; stay short.  Cells under a parked block are flagged and skipped.  A
+; tick that drew text (about 7,300 cycles) puts the step off to the next
+; frame: the two together overrun the frame (2026-09-18, cutscene ticks).
 b64_cut_frame:
+        ldy cut_heavy
+        lda #0
+        sta cut_heavy
         lda shim_on
         beq @done
         lda b64_frame
         and #3
-        bne @done
+        bne :+
+        inc shim_due            ; a step every fourth frame
+:       lda shim_due
+        beq @done
+        tya
+        bne @done               ; due, but this tick drew text: the next frame
+        lda #0
+        sta shim_due
         ldx #0
 @cell:  cpx shim_n
         bcs @done

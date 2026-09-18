@@ -154,7 +154,7 @@ def overlay(R, tier, port):
         v.close()
     R.check(f"tier{tier}.overlay", b[1] == 5 and b[2] == 4 and b[3] == 0xB2,
             f"{b[1]} calls, {b[2]} DMAs, last byte of the window ${b[3]:02X} (expected 5, 4, $B2)")
-    R.measure("overlay.load_8k", int.from_bytes(b[4:7], "little"))
+    R.measure("overlay.load_6k", int.from_bytes(b[4:7], "little"))
 
 
 def cutscene(R, tier, port):
@@ -314,6 +314,34 @@ def multiplexer(R, port):
     R.measure("mux.irq_frame", per[len(per) // 2])
 
 
+def mux_instrument(R, port):
+    """The multiplexer's hardware test (tools/b64muxhw.py) on VICE, both test
+    builds: frozen snapshots judged entry by entry from the log clock, with
+    no sprite cut short, none written late and the groups covering the
+    list; and the log clock itself against the emulator's cycle counter.
+    The 64-sprite build runs here at 1 MHz, beyond the tier that allows 64:
+    the allocation must drop what the chain cannot write in time."""
+    import b64muxhw
+    for prg in ("build/mlog/mux.prg", "build/mlog/mux64.prg"):
+        name = os.path.splitext(os.path.basename(prg))[0]
+        t = b64muxhw.ViceTarget(prg, prg[:-4] + ".lbl", TIERS[8][1], TIERS[8][0], port)
+        try:
+            rs = b64muxhw.run(t, snapshots=3)
+        finally:
+            t.close()
+        bad = [v for r in rs for v in r["violations"]]
+        r = rs[-1]
+        R.check(f"muxhw.{name}", not bad, f"{r['shown']} shown, {r['dropped']} dropped, {r['groups']} groups, "
+                f"least slack {min(x['slack'] for x in rs)} cycles; {len(bad)} violations" + (f", first {bad[0]}" if bad else ""))
+    t = b64muxhw.ViceTarget("build/mlog/mux64.prg", "build/mlog/mux64.lbl", TIERS[8][1], TIERS[8][0], port)
+    try:
+        d = b64muxhw.validate(t)
+    finally:
+        t.close()
+    R.check("muxhw.clock", b64muxhw.valid(d), f"{len(d)} stamps against the emulator's clock, "
+            f"emulator minus rebuilt {sorted(set(e for _, e in d))} cycles")
+
+
 def cutscene_ticks(R, port):
     """The cost of a cutscene frame's main-loop work, from the emulator's own
     cycle counter in the plain build: from the callback to the end of the
@@ -393,7 +421,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument)):
             if want(name):
                 guarded(name, fn, port)
 

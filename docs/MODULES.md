@@ -8,7 +8,7 @@ Designed 2026-09-17 with the user; the overlay loader and link tool it builds on
 
 ## 1. The one constraint
 
-A load costs 9,013 cycles per 8 KB and 2,300 per 2 KB, measured. Anything that runs every frame for many entities cannot be paged on demand: physics for thirty cars cannot arrive mid-frame. So modules have two residency states, and the difference is who decides and when:
+A load costs 9,013 cycles per 8 KB, 6,300 to 6,900 per 6 KB and 2,300 per 2 KB, measured. Anything that runs every frame for many entities cannot be paged on demand: physics for thirty cars cannot arrive mid-frame. So modules have two residency states, and the difference is who decides and when:
 
 - **Pinned.** Loaded once when a mode or scene starts, resident until it ends. For per-frame hooks: physics, collision, the AI behaviours, the entity scheduler.
 - **Cached.** Loaded when a script is about to call them, evicted when the space is needed. For everything called occasionally: a path request, the save system, dialogue, the map, a heist's special case, a bespoke routine one mission needs.
@@ -32,23 +32,23 @@ A 16-byte descriptor lives in the packer's module table, not in the binary: name
 
 A custom assembly routine is a module with one entry. Nothing distinguishes it from a catalogue module.
 
-**Position.** 6502 code is not position-independent, and this engine does not relocate at load time. The module tool links each module once per slot it may occupy and packs every copy into the REU; the loader fetches the copy for the slot it chose. A 2 KB module that may land in any of the four cache slots costs 8 KB of REU, which is nothing, and zero cycles at load. *After Cadaver's c64gameframework, which relocates with an instruction-length table at load time. Changed: copies in the REU instead, because the REU has the space and the load must stay a plain DMA.*
+**Position.** 6502 code is not position-independent, and this engine does not relocate at load time. The module tool links each module once per slot it may occupy and packs every copy into the REU; the loader fetches the copy for the slot it chose. A 2 KB module that may land in any of the three cache slots costs 6 KB of REU, which is nothing, and zero cycles at load. *After Cadaver's c64gameframework, which relocates with an instruction-length table at load time. Changed: copies in the REU instead, because the REU has the space and the load must stay a plain DMA.*
 
 ---
 
 ## 3. The code cache
 
-Region A ($8000-$9FFF) is four 2 KB slots. A module takes one or more adjacent slots. Each slot records the REU address of what it holds, a pin bit, and a last-used stamp. This is the data page cache again at 2 KB granularity with pinning; the two share nothing but the idea.
+Region A ($8000-$97FF) is three 2 KB slots (four until 2026-09-18, when its top 2 KB went to the multiplexer's tables for the 64-sprite tier). A module takes one or more adjacent slots. Each slot records the REU address of what it holds, a pin bit, and a last-used stamp. This is the data page cache again at 2 KB granularity with pinning; the two share nothing but the idea.
 
 | Operation | Cost |
 |---|---|
-| Is module M resident? | four compares |
+| Is module M resident? | three compares |
 | Load a 2 KB module into a free or evictable slot | 2,300 cycles, from the main loop |
-| Load a 6 KB module | three adjacent slots, 6,600 cycles, may take two frames |
+| Load a 6 KB module | all three slots, 6,300 to 6,900 cycles (measured, `overlay.load_6k`), may take two frames |
 | Evict | zero; the slot is overwritten |
 | Pin or unpin | one bit |
 
-The pinned area for a mode is the same format loaded into the game's module region ($6000-$7FFF, 8 KB) at mode start, so play mode can pin up to 8 KB of per-frame modules and still have the 8 KB cache for everything else. During a cutscene the $6000 region is the bitmap, so the scene's modules are all cached, which is the right shape for a scene: nothing runs per entity.
+The pinned area for a mode is the same format loaded into the game's module region ($6000-$7FFF, 8 KB) at mode start, so play mode can pin up to 8 KB of per-frame modules and still have the 6 KB cache for everything else. During a cutscene the $6000 region is the bitmap, so the scene's modules are all cached, which is the right shape for a scene: nothing runs per entity.
 
 Loads run from the main loop after the game callback, one slot per frame at most unless the requester is blocked, so a prefetch never costs more than a tenth of a frame. Loading never happens in an interrupt.
 
@@ -81,7 +81,7 @@ Lookahead is not done by peeking at upcoming p-code, which is fuzzy past any bra
 | Plan entry | Meaning |
 |---|---|
 | pinned set per mode or scene | Modules any per-frame loop in the script calls; loaded at mode start into the pinned area, refused if they exceed it |
-| cache size hint | How many slots the script's working set needs at its widest block; a warning if more than four |
+| cache size hint | How many slots the script's working set needs at its widest block; a warning if more than three |
 | prefetch order | For the first block, so a scene's opening frame has its modules before the fade ends |
 | budget report | Pinned bytes against the region, worst-case per-frame cycles of the pinned set against the frame contract, from the module descriptors |
 
@@ -107,7 +107,7 @@ The compiler gets an optimizer that turns a hot region of p-code into native 650
 
 - **`PLAN.md` section 4.** Tiers, the catalogue, hooks versus syscalls, upgrade points and bespoke modules all stand. "Resident or overlay" as a build-time kind is gone; the manifest becomes the compiler's plan; the packer checks the plan.
 - **The VM.** Gains SYS, NEED, a wait-on-module state per thread, and the load queue. About 300 bytes.
-- **The overlay loader.** Grows from one window to four slots with pins and stamps. About 150 bytes.
+- **The overlay loader.** Grows from one window to three slots with pins and stamps. About 150 bytes.
 - **The tools.** `b64overlay.py` links a module once per allowed slot. A module table joins the manifest. The script assembler gains `V_SYS` and `V_NEED` now; the compiler that emits NEED and the plan automatically is the script language the game plan already calls for (`priorsc`), and it is where the analysis lives.
 - **The engine's own overlays.** The map screen, the cutscene player and the save system become modules like any other, called by scripts and paged by the same cache.
 
@@ -115,7 +115,7 @@ The compiler gets an optimizer that turns a hot region of p-code into native 650
 
 ## 8. Order of work
 
-1. **Code cache.** Four slots, pins, stamps, LRU, loads from the main loop. `examples/overlay` grows to exercise eviction and pinning. Measured: load cost per slot, compare cost.
+1. **Code cache.** Three slots, pins, stamps, LRU, loads from the main loop. `examples/overlay` grows to exercise eviction and pinning. Measured: load cost per slot, compare cost.
 2. **Module format and tool.** The jump table, the descriptor, one link per allowed slot, the packer's module table.
 3. **SYS and NEED opcodes.** The table jump, the wait-on-module state, the prefetch queue. A test script calls two modules alternately with and without NEED and the trace shows the difference.
 4. **The plan.** First as a hand-written table for the cutscene and the overlay example; then emitted by the script compiler with the pinned-set analysis and the budget report.

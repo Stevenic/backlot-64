@@ -15,5 +15,5 @@ entry:
         inc $E001
         rts
 msg:    .byte "OVERLAY TWO REPLACED IT", 0
-        .res $2000-(*-entry)-1
+        .res $1800-(*-entry)-1
         .byte $B2

@@ -19,20 +19,44 @@
 ;   +0  free, last frame (loop passes, 23 cycles each)   +2  free, worst frame
 ;   +4  build cycles, last (24-bit)                      +7  build cycles, worst
 ;   +10 t of the list just built (16-bit)                +12 1 once dense
+;   +13 the $D031 value asked for   +14 spr_limit   +15 mux_first
 ; test_done is reached once, after the dense phase has run 200 lists.
+;
+; Assembled with -D MUX64 it is the turbo tier's harness: 64 sprites, eight
+; columns of eight, one sprite every 3 lines down 192 lines, so each column's
+; sprites are 24 lines apart: a hardware sprite comes free two lines before
+; its next occupant.  All eight hardware sprites are multiplexed and the
+; turbo is asked for at its fastest.  The fast tier's model (a 1-line lead)
+; takes all 64.  Without the turbo (VICE) it runs at 1 MHz, where the
+; allocation drops what the chain cannot write in time, and a 64-sprite
+; list takes more than a frame to build.
+;
+; The freeze protocol, for tools/b64muxhw.py on VICE or on a C64 Ultimate
+; over its REST API: the host writes 1 to $E020; the harness stops building
+; lists, so the engine shows the same list every frame and every table and
+; log holds still; three frames later it writes 1 to $E021.  The host reads
+; what it needs and writes 0 to $E020 to let it run on.
 
 .include "b64.inc"
 .include "slots.inc"
 
 .export game_main
-.import spr_limit
+.import spr_limit, mux_first, b64_turbo
 
+.ifdef MUX64
+NSPR    = 64
+.else
 NSPR    = 32
+.endif
 DENSE_AT = 400
+FREEZE_REQ = $E020
+FREEZE_ACK = $E021
 
 .segment "GAMETOP"
-res:    .res 13
+res:    .res 16
 t:      .res 2
+t2:     .res 1                  ; MUX64: 2t mod 192
+frozen: .res 1
 f0:     .res 1
 cnt:    .res 2
 idx:    .res 1
@@ -42,8 +66,24 @@ game_main:
         jsr b64_init
         ; the harness tests the 32-sprite path in VICE at 1 MHz, where the
         ; engine would allow 24: it raises the limit itself
-        lda #B64_MAX_SPRITES
+.ifdef MUX64
+        jsr b64_turbo_fast      ; nothing happens without the Ultimate's register
+        lda #0
+        sta mux_first           ; all eight hardware sprites
+.endif
+        lda #B64_MAX_SPRITES    ; this is a test of the multiplexer's full list
         sta spr_limit
+        lda b64_turbo
+        sta res+13
+        lda spr_limit
+        sta res+14
+        lda mux_first
+        sta res+15
+        lda #0
+        sta FREEZE_REQ
+        sta FREEZE_ACK
+        sta frozen
+        sta t2
         B64_SET24 b64_reu, SLOT_TILESET0
         jsr b64_load_tileset    ; the HUD's font
         ldx #12
@@ -62,6 +102,19 @@ game_main:
         jmp b64_run
 
 frame:
+        lda FREEZE_REQ
+        beq @live
+        lda frozen              ; frozen: no new list, so the engine re-shows the last
+        cmp #3
+        bcs :+
+        inc frozen
+        rts
+:       lda #1
+        sta FREEZE_ACK
+        rts
+@live:  lda #0
+        sta frozen
+        sta FREEZE_ACK
         jsr b64_bench_begin
         jsr b64_spr_begin
         ldx #0
@@ -70,6 +123,20 @@ frame:
         sta b64_spr_x
         lda xs_hi,x
         sta b64_spr_x+1
+.ifdef MUX64
+        lda t2                  ; (t2 + 3i) mod 192, from line 50
+        clc
+        adc phase64,x
+        bcs @wrap
+        cmp #192
+        bcc @inrange
+        sbc #192
+        jmp @inrange
+@wrap:  adc #63                 ; carry set: (sum - 256) + 64 = sum - 192
+@inrange:
+        clc
+        adc #50
+.else
         lda t
         asl
         clc
@@ -81,6 +148,7 @@ frame:
 :       and #127
         clc
         adc #60
+.endif
         sta b64_spr_y
         lda colours,x
         sta b64_spr_colour
@@ -132,7 +200,18 @@ frame:
         inc t
         bne :+
         inc t+1
-:       ; dense from list DENSE_AT; done 200 lists later
+:
+.ifdef MUX64
+        lda t2
+        clc
+        adc #2
+        cmp #192
+        bcc :+
+        sbc #192
+:       sta t2
+        jmp @soak0              ; one layout, no dense phase
+.endif
+        ; dense from list DENSE_AT; done 200 lists later
         lda t+1
         cmp #>DENSE_AT
         bne :+
@@ -189,6 +268,14 @@ xs_lo:
 .repeat NSPR, i
         .byte <(24 + (i .mod 8) * 38)
 .endrepeat
+.ifdef MUX64
+; one sprite every 3 lines: eight columns 3 lines apart, each column's
+; sprites 24 lines apart
+phase64:
+.repeat NSPR, i
+        .byte i * 3
+.endrepeat
+.endif
 xs_hi:
 .repeat NSPR, i
         .byte >(24 + (i .mod 8) * 38)

@@ -16,7 +16,7 @@ REU DMA moves one byte per cycle and halts the CPU while it runs. Setting up a t
 | 256 B page | 361 | 361 | 0.37 ms | 1.8 % |
 | 1 KB screen matrix | 1,129 | 1,213 | 1.1 ms | 5.7 % |
 | 4 KB | 4,201 | 4,579 | 4.3 ms | 21 % |
-| 8 KB overlay or bitmap | 8,423 | 9,053 | 8.5 ms | 43 % |
+| 8 KB bitmap or stash | 8,423 | 9,053 | 8.5 ms | 43 % |
 | 10 KB still | about 10,500 | 11,300 | 10.7 ms | 53 % |
 | 12 KB tileset slot | about 12,600 | 13,500 | 12.8 ms | 64 % |
 | 38 KB, the whole game area | about 39,000 | 42,000 | 40 ms | 2 frames |
@@ -24,7 +24,7 @@ REU DMA moves one byte per cycle and halts the CPU while it runs. Setting up a t
 
 Measured in VICE with `make bench` (`examples/bench/main.s`, `tools/b64bench.py`); `make check` holds the measured rows to `budgets.txt`. A transfer costs about 105 cycles of setup plus one cycle per byte in the border; inside the display the badlines slow it to about 93 percent. The border is only 7,056 cycles, so nothing over about 6.9 KB is border-only: the 8 KB "border" figure already includes some badlines, and the rows above it are extrapolations, not measurements.
 
-For comparison a stock 1541 delivers about 300 bytes a second, so an 8 KB overlay is 27 seconds from disk and 8 milliseconds from the REU. A good fastloader is 5 to 10 KB a second. The REU is about three thousand times the disk, which is why the design treats it as memory, not storage.
+For comparison a stock 1541 delivers about 300 bytes a second, so an 8 KB bitmap is 27 seconds from disk and 8 milliseconds from the REU. A good fastloader is 5 to 10 KB a second. The REU is about three thousand times the disk, which is why the design treats it as memory, not storage.
 
 The one budget that matters is the border: 112 lines, 7,056 cycles, when the VIC is not drawing. Anything that changes what is on screen (a screen shift, a block park, a palette change) goes there so the change is never seen half done. Anything that does not touch the picture (a page fetch for a script, a sector record, a sprite frame) can go anywhere in the frame, provided no raster interrupt falls due during it: the CPU is halted for the whole transfer, so a DMA delays every interrupt by its own length, and an 8 KB transfer is about 134 raster lines.
 
@@ -39,12 +39,13 @@ The map in `PLAN.md` section 5, with the current measured sizes.
 | Region | Size | Holds | Paged? |
 |---|---|---|---|
 | $0002-$0051 | 80 B | Engine zero page: camera, DMA parameters, sprite list, VM program counter | no |
-| $0200-$07FF | 1.5 KB | Engine tables: sprite lists and sort, VM variables and threads, cutscene state, interrupt scratch copy | no |
-| $0800-$2FFF | 10 KB | Engine resident core. Today 7.7 KB code + 0.8 KB tables, including the platform layer. | no |
+| $0200-$07FF | 1.5 KB | Engine tables: sprite sort and slots, VM variables and threads, cutscene state, interrupt scratch copy | no |
+| $0800-$2FFF | 10 KB | Engine resident core. Today 9.9 KB of code and tables, including the platform layer and the multiplexer. | no |
 | $3000-$3FFF | 4 KB | Game resident code: init, the frame callback, module glue | no |
-| $4000-$5FFF | 8 KB | VIC: screen A, screen B, charset, 64 sprite slots | the sprite slots stream |
+| $4000-$5FFF | 8 KB | VIC: screen A, screen B, charset, 48 sprite slots | the sprite slots stream |
 | $6000-$7FFF | 8 KB | Game RAM in play; the bitmap during a cutscene | stashed to the REU for a cutscene |
-| $8000-$9FFF | 8 KB | Overlay region A | yes, whole |
+| $8000-$97FF | 6 KB | Overlay region A | yes, whole |
+| $9800-$9FFF | 2 KB | The multiplexer: two 64-entry lists, the groups, the generated interrupt routines | no |
 | $A000-$C0FF | 8.25 KB | Active metatile library by row and by column, and properties | swapped per region |
 | $C100-$C8FF | 2 KB | Page cache: eight 256-byte copies of REU pages | yes, per page |
 | $C900-$C9FF | 256 B | The VM's vector table | no |
@@ -67,7 +68,7 @@ Five mechanisms, each owned by the engine. A game never writes a DMA.
 
 **The page cache (on a miss).** For data read in small sequential pieces the engine keeps eight 256-byte pages at $C100 with a linear tag lookup and round-robin replacement. A hit is a compare; a miss is one 361-cycle DMA. This is how the VM will run p-code from the REU, how dialogue text is read, and how path tables are walked. Scripts stop being limited by RAM: a mission script can be 60 KB and the game pays for the pages it touches.
 
-**Overlays (on a screen change).** Code that is not per-frame lives in 8 KB slots in the REU assembled for region A or B. The map screen, the pause menu, the save system, an interior editor, the radio tuner: each is an overlay that loads in 8 ms when its screen opens and is forgotten when it closes. The render path never calls into an overlay, so a missing overlay cannot break a frame.
+**Overlays (on a screen change).** Code that is not per-frame lives in slots of up to 6 KB in the REU assembled for region A or B. The map screen, the pause menu, the save system, an interior editor, the radio tuner: each is an overlay that loads in about 6 ms when its screen opens and is forgotten when it closes. The render path never calls into an overlay, so a missing overlay cannot break a frame.
 
 **Stash and restore (around a mode).** A cutscene borrows the 8 KB at $6000 for its bitmap. `b64_cut_begin` stashes those 8 KB to the REU (8 ms) and `b64_cut_end` restores them. The scene reads its still, renders, and throws everything away; the game's RAM comes back untouched. Information screens, the map, and the title do the same through overlays.
 
@@ -78,7 +79,7 @@ Five mechanisms, each owned by the engine. A game never writes a DMA.
 The VIC reads one 16 KB bank; the engine uses $4000-$7FFF.
 
 - **In play:** two 1 KB screens (A and B) double-buffered, a 2 KB charset, and 4 KB of sprite slots. The playfield is character mode, 40 x 23 cells over the HUD. Colour RAM at $D800 is a separate 1,024 four-bit cells (1,000 used) that the VIC reads directly; the upper four bits read back as bus noise, so colour data is never checked with the REU's verify.
-- **In a cutscene:** an 8 KB bitmap at $6000, its 1 KB colour cells at $5C00 (inside the sprite slot area, which the cutscene does not use for its top band), the text band on screen A, the font in the charset, and actor sprites in the remaining slots.
+- **In a cutscene:** an 8 KB bitmap at $6000, its 1 KB colour cells at $5C00 (just above the 48 sprite slots), the text band on screen A, the font in the charset, and actor sprites in the remaining slots.
 
 Scrolling is two things. The VIC scrolls 0 to 7 pixels in hardware through two registers; that is free. Every eighth pixel the screen matrix (1,000 bytes) must move one cell, and the new column or row must be filled. The engine already does this (milestone E1): the shift is two DMAs through REU scratch, the fill comes from the metatile library, and the whole update runs in the border. Its worst case measured in VICE is about 9,200 cycles against a 6,000-cycle target; the fill is the next optimisation. So the answer to "does it scroll" is: the hardware does the fine part, the engine does the coarse part, and games see a camera position.
 
@@ -168,7 +169,7 @@ The policy on top of section 3: nothing is resident because it might be needed; 
 
 **Map traversal prefetches by heading.** The sector ring is 3 x 3 for state, but the fetch runs one row or column ahead in the direction of travel, so a crossing never waits; at 2 px a frame the camera gives seconds of warning. A region border is known sectors in advance, so the 12 KB tileset arrives in 1 KB pieces over twelve frames into a second, inactive library instead of one 12 ms hit. That second library costs 8 KB, the one place this strategy spends RAM to buy smoothness. When a sector record loads, the sprite frames its entities need are streamed into free slots before they are visible.
 
-**Screens are packages.** A detail screen, phone, garage, or pause menu is one REU slot holding its overlay code, its screen data, its text and its font, built by the packer. Opening it is one 8 KB DMA under a blanked frame; closing it is forgetting it. Nothing about any dialog is ever resident. Portraits, vehicle stats and mission text are fixed-size records fetched by arithmetic through the page cache.
+**Screens are packages.** A detail screen, phone, garage, or pause menu is one REU slot holding its overlay code, its screen data, its text and its font, built by the packer. Opening it is one DMA of up to 6 KB under a blanked frame; closing it is forgetting it. Nothing about any dialog is ever resident. Portraits, vehicle stats and mission text are fixed-size records fetched by arithmetic through the page cache.
 
 **Engine code pages by mode.** The scroller is dead during a cutscene and the cutscene module is dead during play. Each becomes a mode overlay, freeing about 2 KB of core for whichever mode is running. The rule that the render path never depends on an overlay still holds: the render path for the current mode is resident.
 

@@ -30,7 +30,7 @@
 .export b64_heap_reset
 
 .import vm_budget_max
-.import spr_limit
+.import spr_limit, mux_lead1, mux_step
 
 .segment "LOWRAM"
 b64_plat:       .res 1          ; B64_PLAT_* bits
@@ -162,14 +162,10 @@ b64_plat_probe:
         beq :+
         ldx #255
 :       stx vm_budget_max
-        ; the sprite list: 32 with the turbo, 24 on a stock machine, where 32
-        ; at the densest layout costs the whole frame
+        ; the sprite list follows the CPU speed (b64_turbo_set); the probe
+        ; leaves the machine at the 1 MHz reference: 24
         ldx #B64_SPR_STOCK
-        lda b64_plat
-        and #B64_PLAT_TURBO
-        beq :+
-        ldx #B64_MAX_SPRITES
-:       stx spr_limit
+        stx spr_limit
         jsr b64_heap_reset
         rts
 
@@ -234,13 +230,34 @@ b64_turbo_set:
         sta B64_TURBO_CTRL
         and #$0F
         beq @slow
+        pha
         lda B64_TURBO_EN
         ora #$01
         sta B64_TURBO_EN
-        rts
+        ; the multiplexer follows the speed: a faster interrupt needs less
+        ; lead, writes more entries a line, and a faster main loop affords
+        ; more sprites.  Speed indices differ between boards; 8 and up is at
+        ; least 16 MHz on all of them.  The turbo figures are UNTESTED: set
+        ; them from tools/b64muxhw.py on the hardware (docs/ULTIMATE.md).
+        pla
+        ldy #1                  ; with the turbo: a line per further entry
+        cmp #8
+        bcs @fast
+        ldx #32                 ; 2 to ~12 MHz: 32 sprites, a 2-line lead
+        lda #3
+        bne @mux
+@fast:  ldx #B64_MAX_SPRITES    ; 16 MHz and up: 64 sprites, a 1-line lead
+        lda #2
+        bne @mux
 @slow:  lda B64_TURBO_EN
         and #$FE
         sta B64_TURBO_EN
+        ldx #B64_SPR_STOCK      ; 1 MHz: 24 sprites, a 4-line lead, two lines an entry
+        lda #5
+        ldy #2
+@mux:   stx spr_limit
+        sta mux_lead1
+        sty mux_step
         rts
 @skip:  pla
         rts

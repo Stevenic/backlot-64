@@ -38,7 +38,9 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 **The scroller.** The autodrive example runs twice round its square. About every 12 frames, on a settled frame, its screen buffer and colour RAM are read and compared with a full redraw of the world at the camera, computed in Python from the world map and the tileset. The count of frames that go without a callback is budgeted too.
 
-**The multiplexer.** The harness (`examples/mux`) runs 24 sprites on paths the checker can reproduce, first at most four to a line, then bunched so a line carries up to twelve. `tools/b64muxtiming.py` breaks at every generated sprite routine and checks that each hardware sprite is moved only after its previous occupant's last line and before its new occupant's first. At normal density nothing may be dropped; overloaded, something must be; and no sprite may be drawn damaged in 60 captured frames. `tools/b64irqcost.py` measures the interrupt cycles per frame.
+**The multiplexer.** The harness (`examples/mux`) runs 32 sprites on paths the checker can reproduce, first at most four to a line, then bunched so a line carries up to twelve. `tools/b64muxtiming.py` breaks at every generated sprite routine and checks that each hardware sprite is moved only after its previous occupant's last line and before its new occupant's first. At normal density nothing may be dropped; overloaded, something must be; and no sprite may be drawn damaged in 60 captured frames. `tools/b64irqcost.py` measures the interrupt cycles per frame.
+
+**The multiplexer's hardware test, on VICE.** `tools/b64muxhw.py` runs both test builds (`build/mlog/`, `docs/INSTRUMENT.md`): the 32-sprite harness and the 64-sprite layout, the second at 1 MHz, beyond the tier that allows 64, where the allocation must drop what the chain cannot write in time. From three frozen snapshots each: no sprite cut short, none written late by its stamp, none cut short by the blank, and the groups cover the list (`muxhw.mux`, `muxhw.mux64`). And the instrument itself: every stamp rebuilt from the log clock lands on the emulator's line, 0 to 3 cycles after the emulator's own cycle and never before (`muxhw.clock`). The same tool runs on a C64 Ultimate; that run is not part of the check.
 
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
 
@@ -46,12 +48,12 @@ A change is not done until `make check` passes. A change that moves a number in 
 |---|---|
 | `engine.bytes`, `lowram.bytes` | segment sizes from the link maps |
 | `bench.*` | `examples/bench`, read at `test_done` |
-| `overlay.load_8k` | `examples/overlay`, the first 8 KB load |
+| `overlay.load_6k` | `examples/overlay`, the first 6 KB load (region A) |
 | `cutscene.tick_*` | the emulator's own cycle counter in the plain build, from the callback to the end of the engine's frame work, interrupts included, over 160 frames of the drive |
 | `bench.scroll_*` | the benchmark program: one prepare for a crossing right, down and diagonally, interrupts off |
 | `scroll.worst_frame` | the autodrive scroller's own maximum, reset after the first full draw, over twice round its square |
 | `scroll.frames_dropped` | frames without a callback in the same 800 |
-| `bench.mux_*` | the benchmark program: `b64_spr_end` for the harness's 24 sprites, interrupts off |
+| `bench.mux_*` | the benchmark program: `b64_spr_end` for the harness's 32 sprites, interrupts off |
 | `mux.irq_frame` | the emulator's cycle counter from the interrupt handler's entry to its RTI, summed per frame, median of 20 |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.

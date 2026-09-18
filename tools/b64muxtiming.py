@@ -59,8 +59,8 @@ def run(prg, lbl, image, reusize, port, frames=60, skip=100, dense=False):
                 continue
             h = (pc - rout) // 64
             if by is None:
-                by = v.mem("mux_b_y", 64)
-                acc = v.mem("mux_acc", 64)
+                by = v.mem("mux_b_y", 128)
+                acc = v.mem("mux_acc", 128)
             old_y = v.mem(0xD001 + 2 * h)[0]
             new_y = by[acc[x]]
             out["writes"] += 1

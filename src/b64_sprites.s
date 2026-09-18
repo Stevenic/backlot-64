@@ -2,8 +2,9 @@
 ;
 ; Hardware sprite 0 can be pinned for the one object that must never
 ; flicker (b64_spr_pinned; mux_first = 1); the other hardware sprites are
-; multiplexed over up to 24 virtual sprites.  The game builds a list each
-; frame with b64_spr_begin, b64_spr_add and b64_spr_end.
+; multiplexed over up to spr_limit virtual sprites: 24 on a stock C64, 32
+; or 64 with the turbo (b64_turbo_set).  The game builds a list each frame
+; with b64_spr_begin, b64_spr_add and b64_spr_end.
 ;
 ; b64_spr_end decides, in the main loop:
 ;  1. Sort.  The order survives from frame to frame and is re-sorted by y
@@ -11,13 +12,15 @@
 ;     entities in the same order every frame and they move a few lines at
 ;     a time.  A change in the count starts again from submission order.
 ;  2. Allocate.  In y order each entry takes the hardware sprite freed
-;     longest ago (round robin: every sprite is 21 lines tall).  If that
-;     sprite's previous occupant ends too close to the entry's top for an
-;     interrupt to move it in time, the entry is dropped, whole: a ninth
-;     sprite on a line never cuts another short.
-;  3. Group.  Consecutive entries share one raster interrupt while all of
-;     their previous occupants end early enough to write every one of them
-;     before the first is due.
+;     longest ago (round robin: every sprite is 21 lines tall).  If the
+;     chain cannot move it in time, the entry is dropped, whole: a ninth
+;     sprite on a line never cuts another short or shows late.
+;  3. Group.  Consecutive entries share one raster interrupt while every
+;     one of them can still be written before the first is due.
+; Both use a timing model in raster lines, set by the CPU speed: the lead
+; from a group's interrupt to its first entry written (mux_lead1), the
+; lines each further entry adds (mux_step), and the chain itself, which
+; cannot start a group until it has finished the one before.
 ; The interrupts copy: each accepted entry is one index byte, and a group
 ; runs through one routine per hardware sprite with that sprite's
 ; registers built in, each chaining to the next sprite's routine.  The
@@ -30,11 +33,12 @@
 ; grouped interrupts, running the next group directly when late, and
 ; ninth-sprite rejection.  Changed: the order is re-sorted every frame from
 ; the last one rather than fully sorted only when the count changes; groups
-; are formed from when each previous occupant ends rather than from a
-; fixed five-line window with an advance table; rejection and grouping are
-; decided in the main loop; and the interrupt code is generated per
-; hardware sprite into RAM outside the engine.  Measured against this
-; engine's previous multiplexer in docs/JOURNAL.md; not against the source.
+; are formed from when each previous occupant ends and when the chain will
+; be free, rather than from a fixed five-line window with an advance table;
+; rejection and grouping are decided in the main loop; and the interrupt
+; code is generated per hardware sprite into RAM outside the engine.
+; Measured against this engine's previous multiplexer in docs/JOURNAL.md;
+; not against the source.
 
 .include "b64.inc"
 
@@ -43,10 +47,12 @@
 .export mux_schedule
 .export spr_slots_reset
 .export spr_init
-.export spr_limit
+.export spr_limit, mux_lead1, mux_step
 .export spr_ready
 .export mux_first
 .export mux_rout, spr_rejected, mux_b_y, mux_acc   ; for the checks
+.export mux_tables              ; the tools read the list from here: see tools/b64muxhw.py
+mux_tables      = M
 mux_rout        = ROUT
 .ifndef B64_PROFILE
 .export mux_irq, mux_irq_rti
@@ -58,27 +64,25 @@ mux_acc         = acc
 .import cut_active
 .import b64_irq                 ; the general interrupt handler
 
-LEAD_BASE       = 3             ; lines from a group's interrupt to its first write, with slack
 
 ; the multiplexer's RAM above the 25 sprite slots (B64_MUXTAB): two halves
 ; of B64_MAX_SPRITES entries each, the build half and the shown half
 N2              = 2*B64_MAX_SPRITES
 M               = B64_MUXTAB
 b_xlo           = M             ; per entry, in submission order
-b_xhi           = M + N2
-b_y             = M + 2*N2
-b_ptr           = M + 3*N2      ; the sprite pointer: slot + B64_SPR_BASE
-b_col           = M + 4*N2
-b_flg           = M + 5*N2
-acc             = M + 6*N2      ; per accepted entry, in y order: its entry index
-g_line          = M + 7*N2      ; per group: the raster line of its interrupt; 255 after the last
-g_pos           = M + 8*N2      ; per group: the list position of its first entry
-g_cnt           = M + 9*N2      ; per group: its entries
-rr_lo           = M + 10*N2     ; per list position: the routine for its hardware sprite
-rr_hi           = M + 11*N2
-rr_bit          = M + 12*N2     ; per list position: that sprite's bit
-.assert M + 13*N2 + 1 <= ROUT, error, "the multiplexer's tables run into its routines"
-ROUT            = $5A00         ; 8 generated routines, 64 bytes apart, on a page
+b_y             = M + N2
+b_ptr           = M + 2*N2      ; the sprite pointer: slot + B64_SPR_BASE
+b_col           = M + 3*N2
+b_flg           = M + 4*N2      ; bit 0 multicolour, bit 1 behind the playfield, bit 7 x >= 256
+acc             = M + 5*N2      ; per accepted entry, in y order: its entry index
+g_line          = M + 6*N2      ; per group: the raster line of its interrupt; 255 after the last
+g_pos           = M + 7*N2      ; per group: the list position of its first entry
+g_cnt           = M + 8*N2      ; per group: its entries
+rr_lo           = M + 9*N2      ; per list position: the routine for its hardware sprite
+rr_hi           = M + 10*N2
+rr_bit          = M + 11*N2     ; per list position: that sprite's bit
+ROUT            = M + 12*N2     ; 8 generated routines, 64 bytes apart, on a page
+.assert ROUT + 8*64 <= B64_MUXTAB_END, error, "the multiplexer's routines overflow its area"
 .assert ROUT + 8*64 <= B64_MUXTAB_END, error, "multiplexer RAM overflows its area"
 .assert (ROUT & $FF) = 0, error, "mux_gen assumes the routines start on a page"
 
@@ -90,20 +94,30 @@ A_POS   = b64_tmp+3             ; sorted position
 A_HW    = b64_tmp+4             ; the hardware sprite next in turn
 A_FREE  = b64_tmp+5             ; the line that sprite comes free (0 = first use)
 A_OUT   = b64_tmp+6             ; the list position the next accepted entry takes
+A_S     = b64_tmp+7             ; a new group's start
 
 ; offsets in the routine template
 T_Y     = 7                     ; low byte of sta VIC_SPR0_Y + 2h
 T_X     = 13
 T_COL   = 19
 T_PTR   = 25                    ; low byte of the pointer store; +1 is aimed at the shown screen
-T_CLR   = 35                    ; and #~bit
-T_SET   = 39                    ; ora #bit
-T_NEXT  = 49                    ; jmp to the next sprite's routine
-T_LEN   = 52
+.ifdef B64_MUXLOG
+T_LOG   = 6                     ; test builds stamp each entry after its pointer: see the template
+.else
+T_LOG   = 0
+.endif
+T_CLR   = 35 + T_LOG            ; and #~bit
+T_SET   = 39 + T_LOG            ; ora #bit
+T_NEXT  = 49 + T_LOG            ; jmp to the next sprite's routine
+T_LEN   = 52 + T_LOG
+.assert T_LEN <= 64, error, "a generated routine must fit its 64 bytes"
 
 .segment "LOWRAM"
 spr_ready:      .res 1          ; 1 = a finished list waits for the next vblank
-spr_limit:      .res 1          ; entries b64_spr_add accepts a frame: set by the platform probe
+spr_limit:      .res 1          ; entries b64_spr_add accepts a frame: set by the tier and the CPU speed
+; the chain's timing model, in raster lines, set by the CPU speed (b64_turbo_set)
+mux_lead1:      .res 1          ; from a group's interrupt to its first entry written, plus 1: 5 at 1 MHz
+mux_step:       .res 1          ; each further entry in a group: 2 at 1 MHz, where eight sprites' DMA leaves ~44 cycles a line
 ord:            .res B64_MAX_SPRITES    ; sorted order (entries 0..n-1), kept from frame to frame
 ord_n:          .res 1          ; the count the order was built for
 free_at:        .res 8          ; per hardware sprite: the first line after its occupant is shown
@@ -115,19 +129,18 @@ hw_count:       .res 1          ; 8 - mux_first
 rr_first:       .res 1          ; mux_first the routines were generated for ($FF = never)
 flg_or:         .res 1          ; flags of the list being built, ORed and ANDed
 flg_and:        .res 1
-bld_n:          .res 1          ; the finished list: entries accepted, groups, $D015,
-bld_g:          .res 1          ; entries dropped, and whether every entry shares one
-bld_ena:        .res 1          ; set of flags (then $D01C/$D01B are written once)
+bld_n:          .res 1          ; the finished list: entries accepted, $D015, entries
+bld_ena:        .res 1          ; dropped, and whether every entry shares one set of
+                                ; flags (then $D01C/$D01B are written once)
 bld_rej:        .res 1
 bld_same:       .res 1
 shw_ena:        .res 1
 shw_same:       .res 1
 spr_rejected:   .res 1          ; entries dropped from the list being shown (for the checks)
 pin_mask:       .res 1          ; the register bits the multiplexer leaves alone
-cur_hw:         .res 1          ; allocation state in b64_spr_end
-grp:            .res 1
-grp_y:          .res 1
-grp_n:          .res 1
+grp_y:          .res 1          ; allocation state in b64_spr_end: the current group's first line,
+grp_e:          .res 1          ; the line the chain is done with it (the model's),
+grp_ep:         .res 1          ; and the same for the group before
 
 .segment "RODATA"
 bit_set:        .byte $01, $02, $04, $08, $10, $20, $40, $80
@@ -146,8 +159,15 @@ template:
         sta VIC_SPR0_COLOR      ; +18  T_COL
         lda b_ptr,y             ; +21
         sta B64_SPR_PTR_A       ; +24  T_PTR
-        lda b_xhi,y             ; +27
-        lsr                     ; +30
+.ifdef B64_MUXLOG
+        ; the entry's stamp, after its Y and pointer are written: the log
+        ; clock (mux_clock), per list position.  One read, 9 cycles: the
+        ; group's start line anchors it (tools/b64muxhw.py)
+        lda CIA1_TA
+        sta B64_MUXLOG_AT+128,x
+.endif
+        lda b_flg,y             ; +27  bit 7: x >= 256
+        asl                     ; +30
         lda VIC_SPR_HI_X        ; +31
         and #$FF                ; +34  T_CLR
         bcc :+                  ; +36
@@ -191,8 +211,6 @@ b64_spr_add:
         dex
         lda b64_spr_x
         sta b_xlo,x
-        lda b64_spr_x+1
-        sta b_xhi,x
         lda b64_spr_y
         sta b_y,x
         lda b64_spr_slot
@@ -201,8 +219,14 @@ b64_spr_add:
         sta b_ptr,x
         lda b64_spr_colour
         sta b_col,x
+        lda b64_spr_x+1
+        lsr                     ; x >= 256 -> carry
         lda b64_spr_flags
-        sta b_flg,x
+        and #$7F
+        bcc :+
+        ora #$80
+:       sta b_flg,x
+        lda b64_spr_flags
         ora flg_or
         sta flg_or
         lda b64_spr_flags
@@ -210,26 +234,75 @@ b64_spr_add:
         sta flg_and
 @full:  rts
 
+.ifdef B64_MUXLOG
+; mux_clock: test builds.  CIA1 timer A counts four raster lines (4 x 63
+; cycles) over and over, started on a line that is a multiple of 4; a PAL
+; frame is 312 lines, also a multiple of 4, so the count keeps its place
+; frame after frame, and one read of it plus the raster line gives the line
+; and the cycle (tools/b64muxhw.py).  The CIA counts the 1 MHz clock with or
+; without the turbo.  Then 128 samples of the count just after the raster
+; moves to a new line, from which the tool finds the count's phase: the
+; earliest sample is the line's start, 9 cycles before its read at 1 MHz.
+; It runs once, so it lives in the game's area, not the engine's.
+.segment "GAME"
+mux_clock:
+        lda #0
+        sta CIA1_CRA            ; stopped
+        lda #251
+        sta CIA1_TA             ; the latch: 252 cycles a period
+        lda #0
+        sta CIA1_TA+1
+:       lda VIC_HLINE
+        cmp #252                ; in the border, where nothing steals cycles
+        bne :-
+        lda #%00010001          ; load the latch and count, continuously
+        sta CIA1_CRA
+        ldx #0
+@s:     lda VIC_HLINE
+        sta b64_tmp
+:       lda VIC_HLINE           ; 10 cycles a pass, prime to 63: the samples
+        cmp b64_tmp             ; land at every cycle of the line
+        beq :-
+        ldy CIA1_TA
+        sta B64_MUXLOG_AT+384,x ; the new line
+        tya
+        sta B64_MUXLOG_AT+256,x
+        inx
+        bpl @s
+        rts
+.segment "CODE"
+.endif
+
 ; spr_init: at start.  The routines are generated by the first b64_spr_end.
 spr_init:
+.ifdef B64_MUXLOG
+        jsr mux_clock
+.endif
         lda #$FF
         sta rr_first
         lda #B64_SPR_STOCK
         sta spr_limit
+        lda #5                  ; a 4-line lead at 1 MHz
+        sta mux_lead1
+        lda #2
+        sta mux_step
 ; forget every slot's contents so the next add fetches; empty lists
 spr_slots_reset:
         lda #0
         sta g_cnt               ; both halves: an empty group 0, then the end
         sta g_cnt+B64_MAX_SPRITES
         sta shw_ena
-        lda #255
+        lda #255                ; no group has a line until a list is built
+        sta g_line
         sta g_line+1
+        sta g_line+B64_MAX_SPRITES
         sta g_line+B64_MAX_SPRITES+1
+        lda #1
+        sta mux_next            ; the chain points at an end marker
         lda #0
         sta spr_ready
         sta ord_n
         sta bld_n
-        sta bld_g
         sta spr_count_s
         sta spr_rejected
         lda #$FF
@@ -411,7 +484,6 @@ b64_spr_end:
         beq :+
         jsr mux_gen
 :       lda #0
-        sta bld_g
         sta bld_rej
         ; the build half's y column, for the sort and the allocation below
         lda #<b_y
@@ -476,7 +548,8 @@ b64_spr_end:
 :       sta free_at,x
         dex
         bpl :-
-        sta grp
+        sta A_LIM               ; no group but group 0 yet: nothing can join one
+        sta grp_e               ; group 0 is written in the blank: done before any line
         ldx spr_base_b
         stx A_OUT
         stx A_GX                ; group 0: every sprite's first entry
@@ -486,79 +559,95 @@ b64_spr_end:
         ldx #0
 @each:  stx A_POS
         ldy ord,x               ; Y = the entry, 0..n-1
+        tya
+        clc
+        adc spr_base_b
+        ldx A_OUT
+        sta acc,x               ; list position -> entry; stays only if the entry is taken
 @ey:    lda b_y,y
         sta A_Y
         ldx A_HW
         lda free_at,x
         sta A_FREE              ; the line its hardware sprite comes free: 0 = never used
-        beq @first
-        clc
-        adc #LEAD_BASE+1
-        bcs @reject             ; past line 255: nothing more fits on this sprite
-        cmp A_Y
-        bcc @accept             ; free + lead <= y: an interrupt can move it in time
-        beq @accept
-@reject:
-        inc bld_rej
-        jmp @next
-@first: ; the sprite's first use this frame: group 0, written in the blank
-        tya
-        clc
-        adc spr_base_b
-        ldy A_OUT
-        sta acc,y
-        lda A_Y
-        clc
-        adc #22                 ; shown on lines y+1..y+21: free from y+22
-        sta free_at,x
-        ldx spr_base_b
+        bne :+
+        ldx spr_base_b          ; the sprite's first use this frame: group 0, written in the blank
         inc g_cnt,x
-        jmp @gend
-@accept:
-        tya
-        clc
-        adc spr_base_b
-        ldy A_OUT
-        sta acc,y               ; list position -> entry
-        lda A_Y                 ; the new occupant is shown on lines y+1..y+21: free from y+22
-        clc
-        adc #22
-        bcc :+
-        lda #255
-:       sta free_at,x
-        ; join the current group if it can still write this one in time for
-        ; its first entry, else start a new group
-        lda grp
-        beq @newgrp             ; still in group 0: the first reuse starts group 1
-        lda A_FREE
-        cmp A_LIM
+        jmp @take
+:       ; the current group takes it if it can still write it in time: the
+        ; group then starts when this sprite is free, or when the chain has
+        ; finished the group before, whichever is later.  (While there is only
+        ; group 0, A_LIM is 0 and every reuse starts a group.)
+        cmp grp_ep
+        bcs :+
+        lda grp_ep
+:       cmp A_LIM
         beq :+
-        bcs @newgrp             ; comes free too late for this group
-:       dec A_LIM               ; one more entry to write: one line less to spare
-        ldx A_GX
-        sta g_line,x            ; the group waits for its latest occupant to end
+        bcs @newgrp
+:       ldx A_GX
+        sta g_line,x            ; the group's line: its latest start
         inc g_cnt,x
-        jmp @gend
-@newgrp:
-        inc grp
-        inc A_GX
-        lda A_Y
+        clc                     ; when the chain is done with it: start + lead - 1 + step per
+        sbc A_LIM               ; further entry (the lead's spare line is for the deadline, not
+        clc                     ; the chain), = start - A_LIM - 1 + the first entry's y
+        adc grp_y
+        sta grp_e
+        lda A_LIM
         sec
-        sbc #LEAD_BASE+2        ; lines a second entry would need
+        sbc mux_step            ; one more entry to write: a step less to spare
         bcs :+
         lda #0
 :       sta A_LIM
-        ldx A_GX
+        jmp @take
+@newgrp:
+        ; a new group starts when the sprite is free and the chain has
+        ; finished the current group; it must write this entry by its line
         lda A_FREE
+        cmp grp_e
+        bcs :+
+        lda grp_e
+:       sta A_S
+        clc
+        adc mux_lead1
+        bcs @reject             ; past line 255: nothing more fits
+        cmp A_Y
+        beq :+
+        bcc :+
+@reject:
+        inc bld_rej
+        jmp @next
+:       tax                     ; when the chain is done with the new group: start + lead - 1
+        dex
+        lda grp_e
+        sta grp_ep              ; the chain's lag for the group after
+        stx grp_e
+        inc A_GX
+        ldx A_GX
+        lda A_S
         sta g_line,x
         lda #1
         sta g_cnt,x
         lda A_OUT
         sta g_pos,x
-@gend:  inc A_OUT
-        ; next hardware sprite, round robin
+        lda A_Y
+        sta grp_y
+        sec
+        sbc mux_lead1
+        bcc :+
+        sec
+        sbc mux_step            ; the latest start if a second entry joins
+        bcs :++
+:       lda #0
+:       sta A_LIM
+@take:  ; taken: the new occupant is shown on lines y+1..y+21, free from y+22
         ldx A_HW
-        inx
+        lda A_Y
+        clc
+        adc #22
+        bcc :+
+        lda #255
+:       sta free_at,x
+        inc A_OUT
+        inx                     ; next hardware sprite, round robin
         cpx #8
         bne :+
         ldx mux_first
@@ -576,10 +665,6 @@ b64_spr_end:
         sec
         sbc spr_base_b
         sta bld_n
-        lda grp
-        clc
-        adc #1
-        sta bld_g
         ; enable the pinned sprite 0 (when mux_first is 1) and every
         ; hardware sprite the first group uses
         lda bld_n
@@ -598,8 +683,6 @@ b64_spr_end:
         sta g_cnt,x             ; group 0 is empty
         lda #255
         sta g_line+1,x
-        lda #1
-        sta bld_g
         ldx mux_first           ; only the pinned sprite, if there is one
         lda ena_mask,x
         sta bld_ena
@@ -612,6 +695,10 @@ b64_spr_end:
 ; through the generated routines; when the list mixes flags, the $D01C and
 ; $D01B bits of each follow.
 run_group:
+.ifdef B64_MUXLOG
+        lda VIC_HLINE
+        sta B64_MUXLOG_AT,x
+.endif
         lda g_cnt,x
         beq @done
         sta mux_cnt
@@ -709,6 +796,10 @@ mux_irq:
         tya
         pha
 @grp:   ldx mux_next
+.ifdef B64_MUXLOG
+        lda VIC_HLINE
+        sta B64_MUXLOG_AT,x
+.endif
         lda g_cnt,x
         sta mux_cnt
         lda g_pos,x

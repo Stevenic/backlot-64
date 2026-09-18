@@ -7,8 +7,8 @@
 # the commit.
 #
 # name                      limit   measured  what it protects
-engine.bytes                10227   # 10182   CODE + RODATA inside $080D-$2FFF, the resident engine
-lowram.bytes                 1536   #  1511   engine tables in $0200-$07FF
+engine.bytes                10227   # 10164   CODE + RODATA inside $080D-$2FFF, the resident engine
+lowram.bytes                 1536   #  1294   engine tables in $0200-$07FF (the multiplexer's lists moved to $9800)
 
 bench.fetch_64_border         180   #   169   one sprite frame: setup plus 64 bytes
 bench.fetch_256_border        380   #   361   one script page (a page cache miss)
@@ -39,12 +39,17 @@ bench.scroll_diag            6000   #  5754   shift, column, row, stash: the tar
 # cycles per frame in the harness, both handlers, the blank's other work and
 # the status-row split included.  The harness puts a sprite every 4 lines,
 # the densest the hardware can reuse with seven sprites.  The previous
-# multiplexer, at 24 sprites: 7,329 / 8,172 and 8,891.
-bench.mux_first             15200   # 14489
-bench.mux_next               7850   #  7462   233 a sprite: sort, allocate, reject, group
-mux.irq_frame                8850   #  8404   32 sprites, one group every 4 lines
+# multiplexer, at 24 sprites: 7,329 / 8,172 and 8,891.  Raised 2026-09-18
+# (14,489 / 7,462 before): the allocation now models when the chain is free,
+# since a group cannot start until the one before it has finished, which
+# costs about 45 cycles a sprite; without it the 64-sprite layout wrote about
+# 40 entries a frame late at 1 MHz (tools/b64muxhw.py).
+bench.mux_first             16300   # 15524
+bench.mux_next               9020   #  8586   268 a sprite: sort, allocate, reject, group
+mux.irq_frame                8850   #  8389   32 sprites, one group every 4 lines
 
-overlay.load_8k              9560   #  9097   an 8 KB code overlay into region A
+overlay.load_6k              7250   #  6881   a 6 KB code overlay into region A: 6,335-6,881 over six runs, as more or less
+                                              # of it overlaps the display's badlines (8 KB until 2026-09-18: 9,097)
 
 # The tick depends on the art: re-quantising the cruiser with the corrected
 # luma table (2026-09-18) found wheels in four bottom sprites instead of
@@ -53,8 +58,11 @@ overlay.load_8k              9560   #  9097   an 8 KB code overlay into region A
 # what the old one did in interrupts, so the cutscene's main-loop tick rose
 # by ~1,030 cycles (8,889 -> 9,924) while its interrupts fell by about as
 # much; with 24 sprites the frame as a whole saves ~4,000 (see mux.* below).
-cutscene.tick_median        10450   #  9924   callback plus engine frame work, interrupts included
-cutscene.tick_worst         17500   # 16712   the same on a shimmer frame (every fourth); a frame is 19,656
+# A tick that draws text (about 7,300 cycles) and a shimmer step in the same
+# frame overran it (21,087, 2026-09-18, when the multiplexer's cost moved the
+# scene a frame against the shimmer's phase); the step now waits a frame then.
+cutscene.tick_median        10450   #  9999   callback plus engine frame work, interrupts included
+cutscene.tick_worst         17500   # 17057   the same on a shimmer frame (every fourth); a frame is 19,656
 
 # The scroller in the autodrive example, interrupts included: the prepare's
 # worst frame, and frames with no callback in 800.  Frames drop because the

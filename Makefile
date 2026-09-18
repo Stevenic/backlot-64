@@ -30,7 +30,7 @@ VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 .PHONY: all assets run-scroll shot-scroll palette clean check bench
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -189,6 +189,27 @@ $(BUILD)/mux.o: examples/mux/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD
 $(BUILD)/mux.prg: $(ENGINE_OBJS) $(BUILD)/mux.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/mux.o -m $(BUILD)/mux.map -Ln $(BUILD)/mux.lbl
 
+$(BUILD)/mux64.o: examples/mux/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D MUX64=1 -o $@ $<
+
+$(BUILD)/mux64.prg: $(ENGINE_OBJS) $(BUILD)/mux64.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/mux64.o -m $(BUILD)/mux64.map -Ln $(BUILD)/mux64.lbl
+
+# the multiplexer's test builds: the engine assembled with -DB64_MUXLOG, which
+# logs the raster line every sprite group starts on and stamps every entry
+# with a CIA clock, for tools/b64muxhw.py on VICE or on a C64 Ultimate
+# (docs/INSTRUMENT.md)
+MBUILD  = $(BUILD)/mlog
+MENGINE_OBJS = $(patsubst src/%.s,$(MBUILD)/%.o,$(ENGINE_SRCS))
+$(MBUILD):
+	mkdir -p $(MBUILD)
+$(MBUILD)/%.o: src/%.s include/b64.inc $(BUILD)/slots.inc | $(MBUILD)
+	$(AS) -g -t c64 -DB64_MUXLOG $(INC) -o $@ $<
+$(MBUILD)/mux.prg: $(MENGINE_OBJS) $(BUILD)/mux.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(MBUILD)/b64_core.o $(filter-out $(MBUILD)/b64_core.o,$(MENGINE_OBJS)) $(BUILD)/mux.o -Ln $(MBUILD)/mux.lbl
+$(MBUILD)/mux64.prg: $(MENGINE_OBJS) $(BUILD)/mux64.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(MBUILD)/b64_core.o $(filter-out $(MBUILD)/b64_core.o,$(MENGINE_OBJS)) $(BUILD)/mux64.o -Ln $(MBUILD)/mux64.lbl
+
 run-mux: $(BUILD)/mux.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/mux.prg
 
@@ -205,7 +226,7 @@ $(BUILD)/bench.prg: $(ENGINE_OBJS) $(BUILD)/bench.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/bench.o -m $(BUILD)/bench.map -Ln $(BUILD)/bench.lbl
 
 # everything the engine claims, proven in VICE at both REU tiers (docs/CHECK.md)
-check: all $(BUILD)/bench.prg $(REU8) $(PBUILD)/cutscene.prg $(PBUILD)/scroll-auto.prg
+check: all $(BUILD)/bench.prg $(REU8) $(PBUILD)/cutscene.prg $(PBUILD)/scroll-auto.prg $(MBUILD)/mux.prg $(MBUILD)/mux64.prg
 	$(PY) tools/b64check.py $(CHECKFLAGS)
 
 bench: $(BUILD)/bench.prg $(REU) $(REU8)

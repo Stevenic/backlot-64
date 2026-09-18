@@ -19,8 +19,8 @@ B64_SPR_PTR_A   = B64_SCREEN_A + $3F8
 B64_SPR_PTR_B   = B64_SCREEN_B + $3F8
 B64_SPR_PTR_C   = $5C00 + $3F8       ; the cutscene bitmap's colour-cell screen
 B64_SPR_BASE    = (B64_SPRITES - $4000) / 64
-B64_MUXTAB      = $5640         ; the multiplexer's lists and routines, right after the 25 sprite slots
-B64_MUXTAB_END  = $5C00
+B64_MUXTAB      = $9800         ; the multiplexer's lists and routines: CPU data, outside the VIC bank
+B64_MUXTAB_END  = $A000
 
 ; REU registers
 REU_STATUS      = $DF00
@@ -47,7 +47,7 @@ B64_UCI_RESPDATA = $DF1E
 B64_UCI_STATDATA = $DF1F
 
 ; overlay windows (see src/b64_overlay.s)
-B64_OVERLAY_A   = $8000         ; region A, 8 KB
+B64_OVERLAY_A   = $8000         ; region A, 6 KB ($8000-$97FF); the multiplexer holds $9800-$9FFF
 B64_VM_TABLE    = $C900         ; the VM's page-aligned vector table (copied from RODATA at script start)
 B64_OVERLAY_B   = $CC00         ; region B, 1 KB (the scroller's tables take $CA00-$CBFF)
 
@@ -375,9 +375,12 @@ mux_tmp2        = $4F
 
 B64_SPR_FLAG_MC   = $01
 B64_SPR_FLAG_PRIO = $02
-B64_MAX_SPRITES   = 32          ; virtual sprites the multiplexer can take a frame (with the Ultimate's turbo)
-B64_SPR_STOCK     = 24          ; the limit on a stock C64: 32 at 1 MHz takes the whole frame (docs/PLAN.md 3.4)
-B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each at B64_SPRITES
+B64_MAX_SPRITES   = 64          ; virtual sprites the multiplexer can take a frame, with the Ultimate's turbo
+B64_SPR_STOCK     = 24          ; the limit on a stock C64: 32 at 1 MHz already takes the whole frame (docs/PLAN.md 3.4)
+B64_MUXLOG_AT     = $E800       ; test builds (-DB64_MUXLOG), 512 bytes: per group the raster line it
+                                ; starts (+0); per list position the log clock after the entry is written
+                                ; (+128); the clock's calibration, count (+256) and line (+384)
+B64_SPR_SLOTS     = 48          ; frames in VIC RAM, 64 bytes each at B64_SPRITES ($5000-$5BFF); slot 0 is the pinned sprite's
 
 ; ---------------------------------------------------------------------------
 ; Macros

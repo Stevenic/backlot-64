@@ -135,6 +135,22 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 
 **A step not taken.** The roadmap's page table for the script cache was measured before it was built: about two lookups a frame, nearly all answered by the fast path. It would have saved about 40 cycles a frame for 256 bytes. It stays on the roadmap as deferred, with the number.
 
+### 18 September, morning: more sprites than the hardware has, and an instrument for a machine not yet here
+
+**The ask.** Steven asked whether software sprites were possible, then: "I'd really like to see if we can up the overall count of sprite support versus other engines."
+
+**32, then a limit on 32.** The multiplexer went from 24 virtual sprites to 32, the densest layout seven hardware sprites can reuse: one every 4 lines. Two things made it hold. The chain got its own interrupt handler, so a group costs no dispatch. And a hardware sprite was being treated as free a line too early: a sprite with Y = y is shown on lines y+1 to y+21, so it is free from y+22, not y+21 (Bauer 3.8). The timing check proved 32 at 1 MHz with no violation, but building the list took the whole frame. Steven: "one thing I want to be certain of is that you only can do 32 sprites when you're running on a turbo mode." So the limit follows the CPU: 24 on a stock machine, 32 with the turbo.
+
+**Why not 64?** Steven asked why not 48 or 64 on faster machines. The VIC-II still shows at most eight sprites on a line at any CPU speed, but a crowd spread down the screen can be 64 if the main loop can sort and place them and the interrupts can move each one in time. Steven: "let's implement the 64 sprite turbo tier, but I can't actually test it until I get my machine. We also need instrumentation to make that test work." So both were built: the tier (lists of 64, the tables moved to $9800 to make room, overlay region A down from 8 KB to 6 KB, 48 sprite slots) and a test that runs the same way on VICE and on the Ultimate, reading the machine over its REST interface.
+
+**What the instrument found first.** The first VICE run of the 64-sprite layout at 1 MHz reported groups finishing after their sprite's line: about 40 late writes a frame. They were real. The allocation knew when each hardware sprite came free, but not that the chain cannot start a group until it has finished the one before; with a group every 3 lines and each taking 3 to 4 lines at 1 MHz, the chain fell further behind with every group. The allocation now models the chain too: a group starts at its line or when the previous one is done, whichever is later, and at 1 MHz each further entry in a group costs two lines, not one. The same layout at 1 MHz now shows 51 of 64 and writes none late, checked cycle by cycle. The price is about 45 cycles a sprite in the main loop; the two budgets were raised with that reason.
+
+**Making the instrument trustworthy.** A raster line is too coarse to judge a deadline at cycle 55, so the test build stamps every entry with a clock: a CIA timer counting four lines over and over, which gives the line and the cycle from one read and counts the same 1 MHz clock under turbo. Then the instrument was itself checked: on VICE every rebuilt stamp is compared with the emulator's own clock, and all land 0 to 2 cycles after it, never before, so its errors can only lean towards reporting a write late. Its first version disturbed what it measured: two reads per entry and a log at each group's end slowed the chain enough to make late writes the real build does not make. It was cut to one read per entry. The test build's chain is still the slower of the two, so a pass there is a pass in the real build.
+
+**Two more things the checks caught.** The cutscene's worst frame jumped from 16,832 to 21,087 cycles, more than a frame. Tracing it: the new list cost moved the scene one frame against the reflection shimmer's four-frame rhythm, and drawing the officer's text and a shimmer step landed on the same frame. Neither was new; they had missed each other by luck. The shimmer now waits a frame when text was drawn. And a check run passed on objects built from the previous commit, because a size comparison had stashed the working tree and rebuilt it; a clean build found the difference. Comparisons against an earlier version are now built in a separate worktree.
+
+**Waiting for the hardware.** The procedure is in `docs/ULTIMATE.md`: run `tools/b64muxhw.py --host` against the test build, and set the turbo tiers' timing figures from what it measures. Until then the 32- and 64-sprite tiers are UNTESTED.
+
 ---
 
 ## What went wrong, and what caught it
@@ -162,23 +178,28 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | The harness itself made the engine skip every other frame | Counting lists per frame | Its measuring loop now stops before the vertical blank |
 | Screenshots disagreed with the registers in some frames | Stepping one frame and screenshotting at several raster lines | The multiplexer check now tests the timing invariant from the registers; screenshots only look for damage |
 | The first new multiplexer design cost more than it saved | The benchmark, interrupts off | Redesigned: decisions in the main loop, copies in the interrupt |
+| A hardware sprite was reused one line early | The timing check modelled on the VIC-II's own rules | Free from y+22, not y+21 |
+| The chain wrote sprites late when groups came faster than it could run them | The new hardware test, on VICE, then cycle by cycle | The allocation models when the chain is free |
+| The test build's own logging made the chain late | The plain build passed the cycle-exact check where the test build failed | One timer read per entry; the test build is the slower of the two, so its passes carry over |
+| Text and the shimmer landed on one frame and overran it | The cutscene's worst-tick budget | The shimmer waits a frame after text |
+| A check passed on objects built from the previous commit | A clean build disagreed | Comparisons with earlier versions are built in a separate worktree |
 
 ---
 
-## Where it stands, 18 September 2026, after the fills and the multiplexer
+## Where it stands, 18 September 2026, after the sprite tiers
 
 | | |
 |---|---|
-| Elapsed | 14 September, 11:55 PM, to 18 September, 4:30 AM; about 105 requests from Steven |
-| Engine | 5,700 lines of 6502 assembly; 9,892 of its 10,227 resident bytes used |
-| Tools | 3,600 lines of Python: packers, quantisers, the VICE harness, the probe reader |
-| Docs | 1,850 lines, audited against primary sources |
-| Checks | 62, passing locally in about a minute and on every push |
-| Scroller | worst cell crossing 5,754 cycles against a 6,000 target; the example still drops 89 frames in 800 |
-| Cutscene frame | 8,889 cycles typical, 15,692 on effect frames, of 19,656 |
+| Elapsed | 14 September, 11:55 PM, to 18 September, 7:15 AM; about 115 requests from Steven |
+| Engine | 5,600 lines of 6502 assembly; 10,164 of its 10,227 resident bytes used |
+| Tools | 4,400 lines of Python: packers, quantisers, the VICE harness, the probe reader, the multiplexer's hardware test |
+| Docs | 2,050 lines, audited against primary sources |
+| Checks | 65, passing locally in about half a minute and on every push |
+| Scroller | worst cell crossing 5,754 cycles against a 6,000 target; the example still drops 52 frames in 800 |
+| Cutscene frame | 9,999 cycles typical, 17,057 at worst, of 19,656 |
 | Script VM | 82 to 118 cycles per opcode |
-| Multiplexer | 24 sprites: 5,864 main-loop and 6,428 interrupt cycles; overloaded lines drop sprites whole |
-| Not yet run on hardware | the C64 Ultimate tiers, which wait for the machine |
+| Multiplexer | 24 on a stock C64, 32 or 64 with the turbo; 32 sprites cost 8,586 main-loop and 8,389 interrupt cycles; too dense a layout drops sprites whole, never late |
+| Not yet run on hardware | the C64 Ultimate tiers, including the 32- and 64-sprite lists, which wait for the machine |
 
 ---
 

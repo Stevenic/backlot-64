@@ -358,7 +358,7 @@ cs_drive_step:
         sta cs_wframe
 @done:  rts
 
-.segment "RODATA"
+; the harness's tables stay in the game's area: RODATA would count against the engine's
 sizes_lo:       .byte <64, <256, <1024, <4096, <8192
 sizes_hi:       .byte >64, >256, >1024, >4096, >8192
 
