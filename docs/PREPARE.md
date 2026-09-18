@@ -73,6 +73,8 @@ Every asset goes through a quantiser that enforces the VIC-II's real colour rule
 
 **Check:** the tool warns on dithers too far apart in luminance. Fix the art, do not silence the warning.
 
+**Roads.** Traffic reads the world, not a route table: a road metatile carries the direction bits of the ways a car may drive it (`P_ROAD_E`, `_W`, `_S`, `_N`; a crossing has all four), and is 32 pixels across with two lanes whose centres are 8 and 24 pixels in. Eastbound traffic keeps to the lane at 24 (the south half), westbound to 8, southbound to 8 (the west half), northbound to 24: driving on the right. A one-way street sets one bit. A road that ends leads onto a metatile without the bit, and a car there leaves. `examples/traffic` drives on these rules; a tileset whose roads keep them gets its traffic for nothing.
+
 ### World
 
 `b64world.py` writes the 2048 x 2048 metatile map and the region table. Region borders need a band of core-only metatiles at least one screen wide on both sides.

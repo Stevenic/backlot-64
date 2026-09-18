@@ -28,9 +28,9 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll shot-scroll palette clean check bench
+.PHONY: all assets run-scroll run-traffic shot-scroll palette clean check bench
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -182,6 +182,21 @@ $(BUILD)/scroll.prg: $(ENGINE_OBJS) $(BUILD)/scroll.o $(CFG)
 
 $(BUILD)/scroll-auto.prg: $(ENGINE_OBJS) $(BUILD)/scroll-auto.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/scroll-auto.o -Ln $(BUILD)/scroll-auto.lbl
+
+$(BUILD)/traffic.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $@ $<
+
+$(BUILD)/traffic-auto.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D AUTODRIVE=1 -o $@ $<
+
+$(BUILD)/traffic.prg: $(ENGINE_OBJS) $(BUILD)/traffic.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/traffic.o -m $(BUILD)/traffic.map -Ln $(BUILD)/traffic.lbl
+
+$(BUILD)/traffic-auto.prg: $(ENGINE_OBJS) $(BUILD)/traffic-auto.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/traffic-auto.o -Ln $(BUILD)/traffic-auto.lbl
+
+run-traffic: $(BUILD)/traffic.prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/traffic.prg
 
 $(BUILD)/mux.o: examples/mux/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -o $@ $<

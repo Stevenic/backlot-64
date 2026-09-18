@@ -71,3 +71,11 @@ cutscene.tick_worst         17500   # 17057   the same on a shimmer frame (every
 # target is 0.  Before the fills work: 10,361 and 100.
 scroll.worst_frame           8150   #  7750   scroll prepare, worst frame of the autodrive square
 scroll.frames_dropped          95   #    89   frames without a callback, of 800
+
+# The traffic demo (examples/traffic, 2026-09-18), driving itself on the stock
+# tier: frames without a callback in 3,000.  It depends on the route, which
+# depends on when VICE starts: 20 to 140 in runs of 3,000 (0.7 to 4.7 percent),
+# mostly frames where a spawn step, a crossing's planning and the scroller's
+# fill coincide.  The scroller example alone loses 52 in 800.
+traffic.frames_lost           150   #    22   the demo's own measure: see above
+

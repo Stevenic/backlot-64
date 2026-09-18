@@ -151,6 +151,26 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 
 **Waiting for the hardware.** The procedure is in `docs/ULTIMATE.md`: run `tools/b64muxhw.py --host` against the test build, and set the turbo tiers' timing figures from what it measures. Until then the 32- and 64-sprite tiers are UNTESTED.
 
+### 18 September, morning: traffic
+
+**The ask.** Asked what dense sprites are for besides crowds, the answer was traffic, and a rule: the VIC-II shows eight sprites on a line, so with the player's own car on the pinned sprite, an east-west street can carry seven moving cars besides it, and a north-south street is limited by its length. Steven: "create a demo that shows traffic in priors. keep in mind that the player will have their own vehicle as well."
+
+**What was built.** `examples/traffic`: the player's car and up to 24 others on Bellamar's grid. Cars read the road bits of the map a byte at a time, keep to their lane, turn at the new lane's line, stop at lights, queue, and stay out of a jammed crossing. A band governor counts every car in the lines its sprite covers, so no line is ever given more than seven.
+
+**What the measurements changed.**
+
+- The per-line count alone was not enough: 54 sprites were dropped in 3,000 frames. The drops were a car starting 4 lines below a full row of seven, inside the 5 lines the multiplexer needs to move a hardware sprite. Each car now also holds the 17 lines below its sprite, the multiplexer's lead plus 2 lines a sprite for a row of seven. Drops went to none.
+- The first look-ahead treated a car as a point within 12 pixels of a lane. It could not see a 24-pixel car crossing one's path, so cars met inside crossings. It now uses the cars' real sizes.
+- A turning car checked only ahead of its centre. Its turned body reaches back 12 pixels and landed on a car waiting beside it, so turns now check the whole new body.
+- A left turn waiting in a crossing sits across the lane that cars turning right from the other side want. Each waited for the other for ever, found by a trace of the player's car standing still for 1,500 frames. Cars driving themselves now turn only right or go straight. By hand the player still turns either way and can let go.
+- A spawn landed 12 pixels in front of a car still at the region's edge. The spawner now always checks both ways.
+- The all-red gap was 32 frames, and a car entering on the last green frame needs 56 to clear the crossing. It is now 64.
+- The frame budget took the most work. At first a quarter of frames were lost. Staggering the checks, a fast path for cars with nothing near, and spreading the spawner and the status row over separate frames brought it to 1 to 5 percent, depending on the route.
+
+**What it found in the engine.** The status row goes blank in some frames, in this demo and in the scroller example alike. The split interrupt fires on the last line of playfield row 22 and rewrites the vertical fine scroll so that the status row is fetched at line 239. The handler takes 60 to 70 cycles, and when its write lands in the next line at cycle 4 or later, the VIC-II has already started that line as the playfield's next row. In the log, writes at 234:62 or 235:0-1 show the row and writes at 235:4-7 lose it, every time. The fix needs care: with a fine scroll of 0 or 1 the safe window is a few cycles wide. It is the next thing to do.
+
+**How it was checked.** `make check` runs the demo driving itself for 3,000 frames. It checks that no two cars overlap, that the band table matches the cars and holds no more than seven, that nothing is dropped, that traffic flows and that the player's car gets somewhere. It then drives the car by hand through a test byte. A six-minute run found no car standing still for longer than two light cycles.
+
 ---
 
 ## What went wrong, and what caught it
@@ -183,6 +203,10 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | The test build's own logging made the chain late | The plain build passed the cycle-exact check where the test build failed | One timer read per entry; the test build is the slower of the two, so its passes carry over |
 | Text and the shimmer landed on one frame and overran it | The cutscene's worst-tick budget | The shimmer waits a frame after text |
 | A check passed on objects built from the previous commit | A clean build disagreed | Comparisons with earlier versions are built in a separate worktree |
+| Seven sprites to a line still let the multiplexer drop cars | The traffic demo's drop count | Each car also holds the lines the multiplexer needs to reuse its sprite |
+| Cars met inside crossings | Box-overlap samples, then a frame-by-frame trace | The look-ahead uses the cars' real sizes; turns check the whole new body |
+| Two turning cars waited for each other for ever | A trace of the player's car standing still | Cars driving themselves turn only right |
+| The status row goes blank in some frames | Screenshots of the traffic demo, then a log of the split's writes | Recorded with the evidence; the split's timing is the next fix |
 
 ---
 

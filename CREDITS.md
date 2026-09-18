@@ -36,6 +36,7 @@ Details and rankings are in `docs/PRIOR-ART.md`. Each adopted technique also car
 - **JC-000**, c64-https (PR 205): a hardware measurement that the CIA timers run in real time on an Ultimate 64 Elite under turbo.
 - **Linus Åkesson**, "Safe VSP": why VSP scrolling is not on the roadmap.
 - **ilesj**, "Old VIC-II colors and color blending": vertical blending of equal-luma colours on PAL.
+- **Peter Alfke**, Xilinx application note XAPP052, "Efficient Shift Registers, LFSR Counters, and Long Pseudo-Random Sequence Generators": the table of maximal-length feedback taps (16 bits: 16, 15, 13, 4) behind the traffic demo's random numbers.
 - **The VICE team**: the emulator every number in this repository was measured on, its remote monitor, and its cycle-exact `x64sc`.
 - **The cc65 project**: `ca65` and `ld65`.
 - **Commodore Business Machines**: the machine, and the 1750 REU whose DMA controller this engine treats as its memory bus.

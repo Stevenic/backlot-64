@@ -42,6 +42,8 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 **The multiplexer's hardware test, on VICE.** `tools/b64muxhw.py` runs both test builds (`build/mlog/`, `docs/INSTRUMENT.md`): the 32-sprite harness and the 64-sprite layout, the second at 1 MHz, beyond the tier that allows 64, where the allocation must drop what the chain cannot write in time. From three frozen snapshots each: no sprite cut short, none written late by its stamp, none cut short by the blank, and the groups cover the list (`muxhw.mux`, `muxhw.mux64`). And the instrument itself: every stamp rebuilt from the log clock lands on the emulator's line, 0 to 3 cycles after the emulator's own cycle and never before (`muxhw.clock`). The same tool runs on a C64 Ultimate; that run is not part of the check.
 
+**Traffic.** `examples/traffic` driving itself for 3,000 frames, sampled every 10: no two cars' bodies overlap, the band table matches the cars' positions and no band holds more than seven, the multiplexer drops nothing, there is traffic (at least eight cars live on average), and the player's car gets somewhere (a thousand pixels). Then driven by hand through its test byte (`joy_test`): holding up turns the car north at the next crossing, it runs at two pixels a frame, and pulling back holds it (`traffic.auto`, `traffic.by_hand`).
+
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
 
 | Measured | How |
@@ -55,6 +57,7 @@ A change is not done until `make check` passes. A change that moves a number in 
 | `scroll.frames_dropped` | frames without a callback in the same 800 |
 | `bench.mux_*` | the benchmark program: `b64_spr_end` for the harness's 32 sprites, interrupts off |
 | `mux.irq_frame` | the emulator's cycle counter from the interrupt handler's entry to its RTI, summed per frame, median of 20 |
+| `traffic.frames_lost` | frames without a callback in 3,000 of the traffic demo driving itself |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.
 

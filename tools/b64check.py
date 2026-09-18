@@ -314,6 +314,86 @@ def multiplexer(R, port):
     R.measure("mux.irq_frame", per[len(per) // 2])
 
 
+def traffic(R, port):
+    """The traffic demo (examples/traffic).  Driving itself for 3,000 frames,
+    sampled every 10: no two cars' bodies overlap, the band table matches
+    the cars' positions, no band holds more than seven, the multiplexer
+    drops nothing, there is traffic, and the player's car gets somewhere.
+    Driven by hand through the test byte: holding up turns it north at the
+    next crossing, it runs at two pixels a frame, and pulling back holds it.
+    And the frames it loses at 1 MHz."""
+    P, BOT = 24, 28
+    def box(h, x, y):
+        return (x - 12, y - 3, x + 12, y + 3) if h in (1, 3) else (x - 6, y - 7, x + 6, y + 8)
+    def cars(v):
+        m = {n: v.mem(n, 25) for n in ("c_hd", "c_xl", "c_xh", "c_yl", "c_yh")}
+        return {i: (m["c_hd"][i], m["c_xl"][i] | m["c_xh"][i] << 8, m["c_yl"][i] | m["c_yh"][i] << 8)
+                for i in range(25) if m["c_hd"][i] != 255}
+    v = Vice("build/traffic-auto.prg", *TIERS[8], labels="build/traffic-auto.lbl", port=port)
+    try:
+        v.frames(50)
+        t0 = v.word("tick")
+        overlaps = bad_bands = worst = 0
+        lives, travel = [], 0
+        last = cars(v)[P]
+        for _ in range(300):
+            v.frames(10)
+            cs = cars(v)
+            ids = sorted(cs)
+            for a in range(len(ids)):
+                for b in range(a + 1, len(ids)):
+                    A, B = box(*cs[ids[a]]), box(*cs[ids[b]])
+                    overlaps += A[0] < B[2] and B[0] < A[2] and A[1] < B[3] and B[1] < A[3]
+            exp = [0] * 64
+            for i, (h, x, y) in cs.items():
+                if i == P:
+                    continue
+                b, b1 = ((y - 10) >> 3) & 63, ((y + BOT) >> 3) & 63
+                while True:
+                    exp[b] += 1
+                    if b == b1:
+                        break
+                    b = (b + 1) & 63
+            bad_bands += exp != list(v.mem("band", 64))
+            worst = max(worst, max(exp))
+            lives.append(v.mem("live")[0])
+            h, x, y = cs[P]
+            travel += abs(x - last[1]) + abs(y - last[2])
+            last = cs[P]
+        lost = 3000 - (v.word("tick") - t0)
+        dropped = v.word("dropped")
+    finally:
+        v.close()
+    mean = sum(lives) / len(lives)
+    R.check("traffic.auto", not overlaps and not bad_bands and worst <= 7 and dropped == 0 and mean >= 8 and travel >= 1000,
+            f"3,000 frames: {overlaps} overlapping pairs, band table wrong {bad_bands} times, busiest band {worst}, "
+            f"{dropped} sprites dropped, {mean:.1f} cars live on average, the player drove {travel} pixels")
+    R.measure("traffic.frames_lost", lost)
+    v = Vice("build/traffic.prg", *TIERS[8], labels="build/traffic.lbl", port=port)
+    try:
+        v.frames(30)
+        v.poke(v.addr("joy_test"), b"\x01")
+        turned = None
+        for f in range(400):
+            v.frames(1)
+            if cars(v)[P][0] == 0:
+                turned = f + 1
+                break
+        a = cars(v)[P]
+        v.frames(10)
+        b = cars(v)[P]
+        speed = (abs(b[1] - a[1]) + abs(b[2] - a[2])) / 10
+        v.poke(v.addr("joy_test"), b"\x02")
+        v.frames(2)
+        a = cars(v)[P]
+        v.frames(30)
+        held = cars(v)[P] == a
+    finally:
+        v.close()
+    R.check("traffic.by_hand", turned is not None and speed >= 1.9 and held,
+            f"holding up turned it north after {turned} frames; {speed} pixels a frame; pulling back held it: {held}")
+
+
 def mux_instrument(R, port):
     """The multiplexer's hardware test (tools/b64muxhw.py) on VICE, both test
     builds: frozen snapshots judged entry by entry from the log clock, with
@@ -421,7 +501,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic)):
             if want(name):
                 guarded(name, fn, port)
 
