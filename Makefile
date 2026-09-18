@@ -185,7 +185,7 @@ $(BUILD)/bench.prg: $(ENGINE_OBJS) $(BUILD)/bench.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/bench.o -m $(BUILD)/bench.map -Ln $(BUILD)/bench.lbl
 
 # everything the engine claims, proven in VICE at both REU tiers (docs/CHECK.md)
-check: all $(BUILD)/bench.prg $(REU8) $(PBUILD)/cutscene.prg
+check: all $(BUILD)/bench.prg $(REU8) $(PBUILD)/cutscene.prg $(PBUILD)/scroll-auto.prg
 	$(PY) tools/b64check.py $(CHECKFLAGS)
 
 bench: $(BUILD)/bench.prg $(REU) $(REU8)

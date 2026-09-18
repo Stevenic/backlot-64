@@ -18,7 +18,7 @@ jobs:
           ca65 --version
           x64sc --version 2>&1 | head -1 || true
       - name: Build
-        run: make all build/bench.prg build/world8.reu build/prof/cutscene.prg
+        run: make all build/bench.prg build/world8.reu build/prof/cutscene.prg build/prof/scroll-auto.prg
       - name: Check
         env:
           B64_VICE_TIMEOUT_SCALE: "6"

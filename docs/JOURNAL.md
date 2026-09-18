@@ -134,7 +134,8 @@ Dropped frames fell only from 100 to 89. The rest is the example's own per-frame
 | 6502 branches written past their 127-byte reach | The assembler | A rule in `CLAUDE.md` |
 | The scroller example dropped a frame at every cell crossing | Counting callbacks per frame at the start of Phase 2 | Now a budget in `make check`; roadmap step 9 |
 | Timings from the monitor's run-until-return were wrong | They contradicted the profiler | That command stops at the first return from any subroutine; timings now break at the caller's next instruction |
-| The scroller's profiling build runs one frame in four or five | The same comparison | Open; it is needed for step 9 |
+| The scroller's profiling build ran one frame in four or five | Counting callbacks per frame | The probe's sampler wrote two bytes of shared zero page from its interrupt without saving them, corrupting whatever it interrupted. It now writes through patched addresses; a check requires a clean profile of the scroller |
+| The first fix of the sampler wrote half its samples over the opcode counters | The next profile: script opcodes counted in a program with no scripts | A carry handled wrongly in the address arithmetic; fixed, and the same check catches it |
 
 ---
 

@@ -107,8 +107,10 @@ probe_init:
         sta CIA1_ICR
         rts
 
-; probe_event: A = tag.  Preserves A, X, Y.  Safe from the interrupt and
-; the main loop (the index update runs with interrupts off).
+; probe_event: A = tag.  Preserves A, X, Y and every byte of zero page.
+; Safe from the interrupt and the main loop (it runs with interrupts off).
+; The entry is written through store addresses patched below, because the
+; shared zero-page scratch belongs to whoever the probe interrupted.
 probe_event:
         php
         sei
@@ -117,37 +119,40 @@ probe_event:
         pha
         tya
         pha
-        ; entry pointer = P_EVENTS + (index mod 160) * 3
+        ; entry = P_EVENTS + (index mod 160) * 3
         lda P_EVIDX
         sec
 @mod:   sbc #P_NEV
         bcs @mod
         adc #P_NEV
         sta probe_tmp+1
-        lda #0
-        sta b64_tmp+7
-        lda probe_tmp+1
-        asl
-        rol b64_tmp+7
-        clc
-        adc probe_tmp+1
+        ldx #>P_EVENTS
+        asl                     ; index * 2
         bcc :+
-        inc b64_tmp+7
+        inx
+:       clc
+        adc probe_tmp+1         ; index * 3
+        bcc :+
+        inx
 :       clc
         adc #<P_EVENTS
-        sta b64_tmp+6
-        lda b64_tmp+7
-        adc #>P_EVENTS
-        sta b64_tmp+7
+        bcc :+
+        inx
+:       sta @e0+1
+        sta @e1+1
+        sta @e2+1
+        stx @e0+2
+        stx @e1+2
+        stx @e2+2
         ldy #0
         lda probe_tmp
-        sta (b64_tmp+6),y
+@e0:    sta $FFFF,y
         iny
         lda b64_frame
-        sta (b64_tmp+6),y
+@e1:    sta $FFFF,y
         iny
         lda VIC_HLINE
-        sta (b64_tmp+6),y
+@e2:    sta $FFFF,y
         inc P_EVIDX
         bne :+
         inc P_EVIDX+1
@@ -160,62 +165,74 @@ probe_event:
         rts
 
 ; probe_sample: from the interrupt dispatcher after its pushes (the timer
-; path).  The interrupted PC is on the stack above Y, X, A and P.
+; path).  The interrupted PC is on the stack above Y, X, A and P.  Like
+; probe_event it leaves zero page alone: the dispatcher does not save the
+; shared scratch on this path.
 probe_sample:
         lda b64_frame
         sta P_FRAME
+        ; entry = P_SAMPLES + (index mod 128) * 5
         lda P_SMIDX
         and #P_NSM-1
         sta probe_tmp
-        lda #0
-        sta b64_tmp+7
-        lda probe_tmp
-        asl
-        rol b64_tmp+7
-        asl
-        rol b64_tmp+7
-        clc
-        adc probe_tmp
-        sta b64_tmp+6
+        ldx #0
+        asl                     ; index * 2: under 256, the index is under 128
+        asl                     ; index * 4
         bcc :+
-        inc b64_tmp+7
-:       lda b64_tmp+6
-        clc
+        inx
+:       clc
+        adc probe_tmp           ; index * 5
+        bcc :+
+        inx
+:       clc
         adc #<P_SAMPLES
-        sta b64_tmp+6
-        lda b64_tmp+7
+        sta probe_tmp
+        txa
         adc #>P_SAMPLES
-        sta b64_tmp+7
+        tax
+        lda probe_tmp
+        sta @s0+1
+        sta @s1+1
+        sta @s2+1
+        sta @s3+1
+        sta @s4+1
+        stx @s0+2
+        stx @s1+2
+        stx @s2+2
+        stx @s3+2
+        stx @s4+2
         ; the interrupted PC: stack layout from the interrupt's pushes
         tsx
         lda $0107,x             ; PCL: S+1,2 return, S+3 Y, S+4 X, S+5 A, S+6 P, S+7 PCL, S+8 PCH
         ldy #0
-        sta (b64_tmp+6),y
+@s0:    sta $FFFF,y
         lda $0108,x             ; PCH
         iny
-        sta (b64_tmp+6),y
+@s1:    sta $FFFF,y
+        ; the VM's thread + 1, script page and opcode offset, or three zeros
+        ldx #0
+        stx probe_tmp
+        stx probe_tmp+1
         lda probe_vm_active
-        beq @novm
+        beq @vm
         lda vm_cur
         clc
         adc #1
-        iny
-        sta (b64_tmp+6),y
+        tax
         lda vm_pch
-        iny
-        sta (b64_tmp+6),y
+        sta probe_tmp
         lda probe_vm_pc         ; the offset of the opcode in flight
+        sta probe_tmp+1
+@vm:    txa
         iny
-        sta (b64_tmp+6),y
-        jmp @done
-@novm:  lda #0
+@s2:    sta $FFFF,y
+        lda probe_tmp
         iny
-        sta (b64_tmp+6),y
+@s3:    sta $FFFF,y
+        lda probe_tmp+1
         iny
-        sta (b64_tmp+6),y
-        iny
-        sta (b64_tmp+6),y
-@done:  inc P_SMIDX
+@s4:    sta $FFFF,y
+        inc P_SMIDX
         bne :+
         inc P_SMIDX+1
 :       rts

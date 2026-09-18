@@ -314,6 +314,24 @@ def probe_block(R, port):
     finally:
         v.close()
     R.check("probe.block", b[:4] == b"B64P" and int.from_bytes(b[15:18], "little") > 0, f"magic {bytes(b[:4])!r}, worst tick {int.from_bytes(b[15:18], 'little')}")
+    # the scroller runs no scripts: its profile must show no VM samples and
+    # no opcodes, and the probe must not change how often the frame holds
+    import b64probe
+    v = Vice("build/prof/scroll-auto.prg", *TIERS[8], labels="build/prof/scroll-auto.lbl", port=port)
+    try:
+        v.frames(100)
+        seq = []
+        for _ in range(401):
+            v.frames(1)
+            seq.append(v.word("auto_t"))
+        blk = v.mem(0xF800, 2048)
+    finally:
+        v.close()
+    pr = b64probe.decode(blk, b64probe.read_labels("build/prof/scroll-auto.lbl"), {})
+    stray = sum(1 for sm in pr["samples"] if sm["thread"] is not None)
+    dropped = sum(1 for a, b in zip(seq, seq[1:]) if a == b)
+    R.check("probe.clean", not pr["opcodes"] and stray == 0 and dropped <= 60,
+            f"{len(pr['samples'])} samples, {stray} claiming a VM thread, {sum(pr['opcodes'].values())} opcodes counted, {dropped} of 400 frames dropped")
 
 
 # ---------------------------------------------------------------------------
