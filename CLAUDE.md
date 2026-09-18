@@ -4,6 +4,7 @@ A rendering and data engine for the Commodore 64 with an REU. Assembly for every
 
 Read these before working here:
 
+- `docs/JOURNAL.md` — the engineering journal: how the engine is being built with AI, step by step. Add an entry at each milestone: what was asked, what was decided and by whom, what was built, what was measured, and what went wrong. Mistakes stay in the record. It records the work only; it carries no commentary on people or communities.
 - `docs/PLAN.md` — what the engine is, its budgets, memory map, API, milestones.
 - `docs/MEMORY.md` — the memory strategy: what is resident, what is paged and by whom, DMA times, game state in chunks.
 - `docs/PAGING.md` — the catalogue of paging strategies, what each costs, which data gets which, and what cannot or should not be paged.
