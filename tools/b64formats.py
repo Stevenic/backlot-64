@@ -12,7 +12,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, "..", "..", "GTA-64", "tools"))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "Priors-64", "tools"))
 from b64palette import RGB, write_png  # noqa: E402
 from mkdemo import CAR_M_UP, FONT  # noqa: E402
 
@@ -529,7 +529,7 @@ HTML = r'''<title>Vehicle Portrait Formats</title>
 
   <section class="opt">
     <div class="stage two">
-      <figure><img src="__C__" alt="A full-screen multicolour bitmap still: sunset over Vice City with the cruiser on the beach road" width="320" height="200"><figcaption>Day, side view · __CCAP__</figcaption></figure>
+      <figure><img src="__C__" alt="A full-screen multicolour bitmap still: sunset over Bellamar with the cruiser on the beach road" width="320" height="200"><figcaption>Day, side view · __CCAP__</figcaption></figure>
       <figure><img src="__C2__" alt="A night bitmap still: neon club, street lamps, and the cruiser from the front three-quarter with its beacon lighting the road" width="320" height="200"><figcaption>Night, three-quarter · __C2CAP__</figcaption></figure>
     </div>
     <div class="meta">

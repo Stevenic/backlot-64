@@ -55,10 +55,10 @@ Good pairs, and what they read as:
 | blue + dark grey | deep water at night | Grassrivers channels |
 | cyan + light blue | pale turquoise | Keys shallows |
 | green + light green | grass with sun on it | Ambrosia |
-| red + orange | terracotta | Vice City roofs |
+| red + orange | terracotta | Bellamar roofs |
 | red + purple | wine, brick | Port Gellhorn |
 | brown + orange | sand at dusk | Ambrosia dirt |
-| yellow + white | hot sand | Vice Beach |
+| yellow + white | hot sand | Bellamar Beach |
 | purple + blue | night sky, neon halo | night states |
 
 **Within a cell** you can only dither between the four colours that cell has, so plan the shared colours as pairs. If a region's three shared colours are dark grey, mid grey, and light grey, the ground has five greys available with no cell colours spent.
@@ -85,7 +85,7 @@ Use it for water, neon glow, and sunset gradients on the raster split, not for a
 
 `make palette` runs `tools/b64palette.py`, which enumerates every colour a screen can show for a given set of three shared colours: the solids, the blends that pass the dither rule, the mixed RGB of each blend, and how many are visually distinct. It writes a swatch PNG per trio, with each blend shown as its mixed colour above its actual checkerboard, and a markdown table with the RGB values. Draw from the swatch, not from memory.
 
-Measured for the GTA-64 regions, day and night:
+Measured for the Priors-64 regions, day and night:
 
 | Rule | Per screen | Whole game |
 |---|---|---|
@@ -108,18 +108,18 @@ The other way to widen a screen's palette is a raster split. A screen with two b
 
 ## 7. Region palettes
 
-From the GTA-64 plan. Outdoors, shared colours 0 and 1 are fixed for the whole map: dark grey and light grey by day, black and dark grey by night. Only shared colour 2, the accent, changes per region. Tiles that do not use the accent are *core* tiles and must be drawn so they read correctly under every accent; the world's region borders are built only from them.
+From the Priors-64 plan. Outdoors, shared colours 0 and 1 are fixed for the whole map: dark grey and light grey by day, black and dark grey by night. Only shared colour 2, the accent, changes per region. Tiles that do not use the accent are *core* tiles and must be drawn so they read correctly under every accent; the world's region borders are built only from them.
 
 | Region | Day accent | Night accent |
 |---|---|---|
-| Vice City | white | pink |
+| Bellamar | white | pink |
 | Leonida Keys | light blue | blue |
 | Grassrivers | brown | blue |
 | Port Gellhorn | orange | red |
 | Ambrosia | green | mid grey |
 | Mount Kalaga | light green | mid grey |
 
-Interiors change all three shared colours behind a fade. See the interiors table in the GTA-64 plan.
+Interiors change all three shared colours behind a fade. See the interiors table in the Priors-64 plan.
 
 ---
 

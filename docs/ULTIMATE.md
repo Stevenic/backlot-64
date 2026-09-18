@@ -27,7 +27,7 @@ Measured in VICE on 2026-09-17: tier 0 with `make bench REUSIZE=8192` reports `r
 ## Policy
 
 - **Correctness at tier 0.** Every feature is checked in VICE at 8 MB before it is called done. A frame that needs turbo to fit is a bug.
-- **Turbo is headroom.** The engine leaves the speed where the menu put it. A game calls `b64_turbo_fast` when it wants the budget (the default for GTA-64 when the register exists) and `b64_turbo_slow` around anything cycle-timed. The VM budget follows the probe automatically.
+- **Turbo is headroom.** The engine leaves the speed where the menu put it. A game calls `b64_turbo_fast` when it wants the budget (the default for Priors-64 when the register exists) and `b64_turbo_slow` around anything cycle-timed. The VM budget follows the probe automatically.
 - **DMA does not speed up.** REU transfers stay bus-bound, so the paging numbers in `MEMORY.md` hold on every tier.
 - **The 16 MB image is the build.** `reu.manifest` declares 16384; the stock tier runs the first 8 MB of the same image (`build/world8.reu`). Every packed asset lives below 8 MB; the upper half is the tier 1 heap.
 - **Sound is optional data.** The PCM opcode plays a sample on tier 3 and does nothing elsewhere, so a script can ask for a sound on any machine. Samples are 8-bit PCM packed as slots.

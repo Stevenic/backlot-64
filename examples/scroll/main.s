@@ -36,7 +36,7 @@ game_main:
         B64_SET24 b64_reu, SLOT_TILESET0
         jsr b64_load_tileset
 
-        ; Vice City day shared colours
+        ; Bellamar day shared colours
         lda #11
         sta VIC_BG_COLOR0
         lda #15

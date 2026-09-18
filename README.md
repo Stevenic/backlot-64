@@ -1,6 +1,6 @@
 # backlot-64
 
-A rendering and data engine for the Commodore 64 with an REU, built for [GTA-64](../GTA-64) and meant to outlive it.
+A rendering and data engine for the Commodore 64 with an REU, built first for Priors-64, an open-world driving game set in a fictional Florida, and meant to outlive it.
 
 Two halves. The rendering half draws a multicolour character-mode world of up to 2048x2048 metatiles, scrolls it in 8 directions with DMA-assisted screen shifts, multiplexes 24 sprites, and handles raster splits, charset animation, text, and transitions. The data half treats the REU as the program's real memory and the 64 KB as a cache: it streams world data and assets, runs code overlays, and keeps a page cache so scripts and text execute from expansion memory. On top of both sits a module system: physics, AI, pathfinding, collision, scripting, and sound come in tiers, all in assembly, and a game picks the tiers it wants in a manifest that the build checks against the machine's RAM and frame budget. Everything per-frame is hand-written 6502. One build scales from a stock C64 with an 8 MB REU to the C64 Ultimate (16 MB, turbo CPU, PCM sampler, files into the REU), probing the machine at boot; see `docs/ULTIMATE.md`.
 

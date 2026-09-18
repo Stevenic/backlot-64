@@ -9,7 +9,7 @@ A tileset is:
     (padded to 12 KB)
 
 Metatiles are drawn on a 4x4-cell multicolour canvas with the same drawing
-primitives as the GTA-64 demos, then deduped into the charset.
+primitives as the Priors-64 demos, then deduped into the charset.
 
 usage: b64tileset.py <tileset-name> <out.bin> [--sprites out.spr]
 """
@@ -18,7 +18,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, "..", "..", "GTA-64", "tools"))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "Priors-64", "tools"))
 from mkdemo import (  # noqa: E402
     BLACK, WHITE, RED, CYAN, PURPLE, GREEN, BLUE, YELLOW,
     ORANGE, BROWN, PINK, DGRAY, MGRAY, LGREEN, LBLUE, LGRAY,
@@ -148,7 +148,7 @@ def mc():
 
 
 # ---------------------------------------------------------------------------
-# Vice City, day.  bg0 dark grey (asphalt), bg1 light grey (sidewalk, walls),
+# Bellamar, day.  bg0 dark grey (asphalt), bg1 light grey (sidewalk, walls),
 # bg2 white (edges, dashes, foam).  v3 = per-cell colour.
 # ---------------------------------------------------------------------------
 def vice_city_day():

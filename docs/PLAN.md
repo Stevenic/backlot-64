@@ -1,10 +1,10 @@
 # backlot-64 Engine Plan
 
-backlot-64 is the engine under GTA-64. It has two halves. The rendering half owns everything the VIC-II draws: the scrolling character-mode playfield, tilesets and palettes, hardware sprites and their multiplexing, raster splits, text, and screen transitions. The data half owns expansion memory: it treats the REU as the program's real memory and the 64 KB as a cache, streaming world data, assets, and code overlays in and out by DMA. Together they are what lets a C64 in VICE run a program whose memory requirements are measured in megabytes.
+backlot-64 is the engine under Priors-64. It has two halves. The rendering half owns everything the VIC-II draws: the scrolling character-mode playfield, tilesets and palettes, hardware sprites and their multiplexing, raster splits, text, and screen transitions. The data half owns expansion memory: it treats the REU as the program's real memory and the 64 KB as a cache, streaming world data, assets, and code overlays in and out by DMA. Together they are what lets a C64 in VICE run a program whose memory requirements are measured in megabytes.
 
 The engine core does not own game logic. Physics, AI, pathfinding, collision, scripting, and sound are optional modules, all in assembly, that a game selects in a manifest and pays for in resident RAM and frame cycles. Missions, world design, and the game's own rules belong to the game built on it.
 
-The name is a joke with a serious constraint behind it: the engine is meant to be reused by more than one game, so its boundaries, data formats, and calling conventions are specified up front rather than grown inside GTA-64.
+The name is a joke with a serious constraint behind it: the engine is meant to be reused by more than one game, so its boundaries, data formats, and calling conventions are specified up front rather than grown inside Priors-64.
 
 ---
 
@@ -89,7 +89,7 @@ A frame with no cell crossing costs under 100 cycles for the scroll register upd
 
 ### 3.2 World
 
-The world is a flat 2048x2048 array of metatile indices in the REU, 4 MB. Address is `(y << 11) | x`, so a metatile lookup is three register writes and one DMA. A metatile is 4x4 cells, 32x32 pixels. At GTA-64's scale of roughly 2.5 metres per cell, a metatile is 10 metres and the world is 20.5 km on a side, about 420 square kilometres. Any estimate of GTA VI's map fits inside that with room to spare.
+The world is a flat 2048x2048 array of metatile indices in the REU, 4 MB. Address is `(y << 11) | x`, so a metatile lookup is three register writes and one DMA. A metatile is 4x4 cells, 32x32 pixels. At Priors-64's scale of roughly 2.5 metres per cell, a metatile is 10 metres and the world is 20.5 km on a side, about 420 square kilometres. Any estimate of GTA VI's map fits inside that with room to spare.
 
 There is no map window in main RAM. The scroller fetches the metatiles under the new screen column or row directly from the REU when it needs them. The whole world is always "loaded."
 
@@ -140,7 +140,7 @@ A cutscene is layers inside raster bands, because the VIC-II shows bitmap or cha
 
 Bitmap mode borrows the VIC bank differently from the playfield: bitmap at $6000-$7FFF, its colour cells at $5C00, the text screen at $4000, the font at $4800, actor sprite slots at $5000-$5BFF. The 8 KB at $6000 is game RAM, so the data engine stashes it to the REU when a cutscene starts and restores it at the end, which is two DMAs and the first use of the quicksave path.
 
-Per-cell colours in a still live in screen and colour RAM, so colour cycling works on a set: neon flickers. Charset animation does not apply to bitmaps. The first use is the **shimmer**: the still packer lists the cells below a horizon row that mix two non-background colours, and every fourth frame the engine swaps those two colours' codes by exchanging the nibbles of each cell's screen byte, so the reflection pattern inverts and the wet road moves. About 20 cycles per cell in the border; 80 cells on the Vice Club set. The shimmer skips cells under a parked object, and a park or unpark waits for a vertical blank in the shimmer's base phase, at most seven frames, so the block, which was composited against the unswapped still, lands in step with its neighbours. Sets are prompted for clean vertical streak reflections because streaks quantise to bands the shimmer can move, while speckle quantises to noise.
+Per-cell colours in a still live in screen and colour RAM, so colour cycling works on a set: neon flickers. Charset animation does not apply to bitmaps. The first use is the **shimmer**: the still packer lists the cells below a horizon row that mix two non-background colours, and every fourth frame the engine swaps those two colours' codes by exchanging the nibbles of each cell's screen byte, so the reflection pattern inverts and the wet road moves. About 20 cycles per cell in the border; 80 cells on the Club Bellamar set. The shimmer skips cells under a parked object, and a park or unpark waits for a vertical blank in the shimmer's base phase, at most seven frames, so the block, which was composited against the unswapped still, lands in step with its neighbours. Sets are prompted for clean vertical streak reflections because streaks quantise to bands the shimmer can move, while speckle quantises to noise.
 
 **The engine is also its data contract.** `docs/PREPARE.md` states, for every asset type, how to make it, which tool converts it, and what to check, written so an agent can follow it literally; `CLAUDE.md` at the repository root points there. A game prepared that way runs on the chip.
 
@@ -276,7 +276,7 @@ Two modules can hook the same point. Order within a hook is manifest order, so a
 
 ### 4.6 Tiers are not a ladder
 
-The tiers exist so a game can spend where it matters. A racing game on the engine wants physics/sim and ai/basic. GTA-64 probably wants physics/arcade and ai/tactical, because the feel of GTA is in how the city reacts to you more than in how the car slides. A game can also write its own module against the same header format and hook table, and the picker treats it like any other.
+The tiers exist so a game can spend where it matters. A racing game on the engine wants physics/sim and ai/basic. Priors-64 probably wants physics/arcade and ai/tactical, because the feel of GTA is in how the city reacts to you more than in how the car slides. A game can also write its own module against the same header format and hook table, and the picker treats it like any other.
 
 ### 4.7 Upgrade points
 
@@ -300,7 +300,7 @@ A game is not limited to the catalogue. Any category can be filled by a module t
 
 ```
 [modules]
-physics   = @modules/vehicle       ; bespoke, in GTA-64/modules/vehicle/
+physics   = @modules/vehicle       ; bespoke, in Priors-64/modules/vehicle/
 ai        = tactical
 path      = lanes
 collision = box
@@ -331,7 +331,7 @@ A bespoke module may call catalogue modules through `b64_mod_call`, so it can be
 
 **What is not allowed.** A bespoke module cannot hook the render path. It cannot run bytecode from a hook. It cannot own an overlay region. It cannot allocate zero page outside what the packer gives it. It cannot take more than 4 KB resident without a manifest override that says so in writing. The restrictions exist so that a bespoke module is a module, not a fork of the engine.
 
-**Worked example: GTA-64's vehicle physics.** GTA-64 does not want sim physics. It wants arcade handling with the things that make Leonida Leonida. Its bespoke `vehicle` module depends on physics/arcade and adds:
+**Worked example: Priors-64's vehicle physics.** Priors-64 does not want sim physics. It wants arcade handling with the things that make Leonida Leonida. Its bespoke `vehicle` module depends on physics/arcade and adds:
 
 | Addition | What it does | Why bespoke |
 |---|---|---|
@@ -342,7 +342,7 @@ A bespoke module may call catalogue modules through `b64_mod_call`, so it can be
 | Damage staging | Damage byte thresholds swap the sprite frame to dented, then add a smoke sprite, then fire, then explode | Sprite work the physics module should own, not the AI |
 | Enter and exit | Vehicle ownership by an entity, door position offsets, the busted-while-in-car case | Game rules, not physics |
 
-Declared cost: 1.8 KB resident, 120 cycles fixed, 140 per entity. That measures as a plus tier, 1 point. So GTA-64's manifest of bespoke vehicle physics, tactical AI, lane pathing, and box collision comes to 5 points and stays inside the budget with the same headroom as the catalogue version.
+Declared cost: 1.8 KB resident, 120 cycles fixed, 140 per entity. That measures as a plus tier, 1 point. So Priors-64's manifest of bespoke vehicle physics, tactical AI, lane pathing, and box collision comes to 5 points and stays inside the budget with the same headroom as the catalogue version.
 
 ### 4.9 Engine modules
 
@@ -527,7 +527,7 @@ b64_bench_show      Print the last measurement to the HUD.
 
 ## 8. Data formats and tools
 
-All packing is Python 3 in `tools/`, invoked by `make`. Source art is PNG or the canvas-drawing DSL already used for the GTA-64 zone demos.
+All packing is Python 3 in `tools/`, invoked by `make`. Source art is PNG or the canvas-drawing DSL already used for the Priors-64 zone demos.
 
 | Format | Tool | Notes |
 |---|---|---|
@@ -573,7 +573,7 @@ Each milestone ships a runnable program under `build/` and a measured benchmark.
 | E3 | **Sprites** | Done. Sprite 0 pinned, sprites 1-7 multiplexed over 24 virtual sprites with a y-sorted raster chain, double-buffered lists, and per-slot frame streaming from the REU (a frame is fetched only when a slot's entity changes heading or state). Measured: a static frame with 20 multiplexed cars costs ~1,700 cycles including the chain interrupts. |
 | E4 | **Raster** | HUD split done: the playfield is rows 0-22 and row 23 is a fixed HUD row. The split interrupt fires on the last line of row 22 (231 + YSCROLL) and sets YSCROLL to 7 so the HUD's badline always lands on line 239; the 0-7 idle lines between show background 0 through the idle byte at $7FFF. Forcing a badline mid-row makes the VIC repeat the row, which is why the split has to track the scroll. The multiplexer chain is clamped around the split. Still to do: the general split table, charset animation, colour cycling. |
 | E5 | **Text** | Font, status row, dialogue box, numbers, fades and cuts. |
-| E5.5 | **Modules** | Module SDK, hook table, manifest packer with budget checking, declared-versus-measured enforcement, and the base and plus tiers of physics and ai measured. A bespoke module from GTA-64 built against the SDK as the acceptance test. |
+| E5.5 | **Modules** | Module SDK, hook table, manifest packer with budget checking, declared-versus-measured enforcement, and the base and plus tiers of physics and ai measured. A bespoke module from Priors-64 built against the SDK as the acceptance test. |
 | E6 | **Overlays** | Page cache, overlay loader with region tracking, persistence records, and the overlay assembler. Full tool chain and the benchmark runner in CI. |
 | E7 | **EasyFlash** | Cartridge backend with a reduced world. |
 | E8 | **NTSC** | Timing pass. |
@@ -583,22 +583,22 @@ Each milestone ships a runnable program under `build/` and a measured benchmark.
 | E13 | **VM** | Done, core tier, running from the REU. `src/b64_vm.s`: 45 opcodes, 8 threads, 32 shared 16-bit variables, a two-level call stack per thread, a per-frame instruction budget, syscalls to the cutscene primitives. Scripts are assembled at offset 0 with `script.cfg`, packed as REU slots, and read through the page cache (`src/b64_page.s`); nothing of a script is resident. Measured with `make bench`: 116 to 147 cycles per opcode, the cutscene drive loop 11 times slower than the same step in assembly (was 19 before the page-relative fetch). Debugging: assemble with `-DVM_TRACE` to record every dispatch (thread, offset) in a ring at $E100. Next: event waits and entity-bound threads (the ai tier), thread contexts in the REU. |
 | E14 | **Platform tiers** | Done, first cut. `src/b64_plat.s` probes the machine at boot: REU size (8 or 16 MB), the Ultimate turbo register, Ultimate Audio, the command interface; sizes the VM budget and the game heap. `src/b64_pcm.s` plays 8-bit PCM from the REU on Ultimate Audio (PCM opcode); `src/b64_uci.s` loads a file into the REU through the command interface. Tiers 0 and 1 verified in VICE; 2 to 4 await hardware. See `docs/ULTIMATE.md`. |
 | E15 | **Samples on stock hardware** | REU-streamed 4-bit sample playback on a CIA timer NMI with a mixing budget, for machines without Ultimate Audio. |
-| E9 | **C128** | Platform layer: MMU setup, far-call trampoline, 2 MHz border switch, resident overlays in bank 1, VDC console. GTA-128 boots in `x128` from the same REU image as GTA-64. |
+| E9 | **C128** | Platform layer: MMU setup, far-call trampoline, 2 MHz border switch, resident overlays in bank 1, VDC console. GTA-128 boots in `x128` from the same REU image as Priors-64. |
 
-The forward sequence, phased and with the ideas' sources, is `docs/ROADMAP.md`; this table records what has shipped. GTA-64's Milestone 1 through 5 map onto E1 through E5. GTA-64 begins using the engine at E1. GTA-128 is the same game built for the C128 platform at E9, with its own manifest and no other differences.
+The forward sequence, phased and with the ideas' sources, is `docs/ROADMAP.md`; this table records what has shipped. Priors-64's Milestone 1 through 5 map onto E1 through E5. Priors-64 begins using the engine at E1. GTA-128 is the same game built for the C128 platform at E9, with its own manifest and no other differences.
 
 ---
 
-## 11. Relationship to GTA-64
+## 11. Relationship to Priors-64
 
-backlot-64 lives in its own repository next to GTA-64. GTA-64's Makefile points at it with a variable, and the engine is assembled into the game as source, not linked as a binary. The engine's segments and symbol prefix keep the two from colliding.
+backlot-64 lives in its own repository next to Priors-64. Priors-64's Makefile points at it with a variable, and the engine is assembled into the game as source, not linked as a binary. The engine's segments and symbol prefix keep the two from colliding.
 
 ```
 U64 ?= ../backlot-64
 ca65 -I $(U64)/include ...
 ```
 
-What moves from GTA-64 into the engine: the VIC bank setup and IRQ skeleton from `src/main.s`, the canvas renderer and sprite DSL from `tools/mkdemo.py`, and the sprite path runtime from `src/demo/runtime.inc` reworked into the multiplexer. What stays in GTA-64: the zone art, the world layout, and everything in the game's own plan.
+What moves from Priors-64 into the engine: the VIC bank setup and IRQ skeleton from `src/main.s`, the canvas renderer and sprite DSL from `tools/mkdemo.py`, and the sprite path runtime from `src/demo/runtime.inc` reworked into the multiplexer. What stays in Priors-64: the zone art, the world layout, and everything in the game's own plan.
 
 ---
 

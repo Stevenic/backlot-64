@@ -1,4 +1,4 @@
-; backlot-64 example: the Vice Club scene as p-code.
+; backlot-64 example: the Club Bellamar scene as p-code.
 ;
 ; Assembled at offset 0 with script.cfg and packed into the REU as SLOT_SCENE.
 ; Nothing in this file is resident: the VM reads it through the page cache.
@@ -35,7 +35,7 @@ script:
         V_LDI     WFR, 0
         V_LDI     WACC, 0
         V_SPAWN   draw
-        V_TEXT    21, 2, "VICE CLUB, 2:14 AM"
+        V_TEXT    21, 2, "CLUB BELLAMAR, 2:14 AM"
         V_WAIT    60
         V_LDI     AX, 0*16               ; off the left edge, cell-aligned y
         V_LDI     AY, 162

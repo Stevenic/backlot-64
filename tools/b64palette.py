@@ -8,7 +8,7 @@ blend, and how many are visually distinct.  Writes a swatch PNG and a
 markdown table per trio, and a union count across all trios.
 
 usage: b64palette.py <out-dir> [name=bg0,bg1,bg2 ...]
-       with no trios given, reports the GTA-64 regions.
+       with no trios given, reports the Priors-64 regions.
 """
 import os
 import struct
@@ -120,7 +120,7 @@ def report(outdir, name, trio):
     return uniq
 
 
-# GTA-64: stable core (dgray/lgray by day, black/dgray by night) plus a
+# Priors-64: stable core (dgray/lgray by day, black/dgray by night) plus a
 # regional accent, and full-trio interiors.
 GTA64_REGIONS = {
     "vice-day": ("dgray", "lgray", "white"),

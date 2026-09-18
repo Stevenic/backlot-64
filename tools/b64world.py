@@ -7,7 +7,7 @@ and a 64x64 region table (one tileset slot per 32x32-metatile sector).
 This is the first-cut procedural layout: one city on the east coast, an
 ocean, beach, highways, and grassland.  It exists so the scroller has
 something big to drive around.  The real Leonida layout replaces it in
-GTA-64's own world tool.
+Priors-64's own world tool.
 
 usage: b64world.py <world-name> <out.map> <out.reg>
 """

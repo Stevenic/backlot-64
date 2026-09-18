@@ -5,7 +5,7 @@
 ; the scene's p-code (scene.s), which lives in the REU.  Nothing here runs
 ; per frame except that p-code.
 ;
-; Scene: night outside the Vice Club.  A cruiser drives in as an object,
+; Scene: night outside the Club Bellamar.  A cruiser drives in as an object,
 ; eases to a stop with its wheels turning, its beacon flashes, an officer
 ; speaks, the car parks as a block pixel for pixel, then drives off.
 
