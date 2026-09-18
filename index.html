@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>backlot-64</title>
+<meta name="description" content="backlot-64, a C64 and REU game engine: every demo recorded in VICE on a stock C64 with an 8 MB REU.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --ground: #eceef5;
+  --panel: #e1e4ee;
+  --ink: #1b1e31;
+  --muted: #545a73;
+  --rule: #c8ccdb;
+  --accent: #4a3ea6;
+  --screen: #1b1e31;
+  --note: #7a4f10;
+  --note-soft: #f1e5cf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #15172a;
+    --panel: #1d2036;
+    --ink: #dfe2f1;
+    --muted: #9ca2c0;
+    --rule: #2d3150;
+    --accent: #a59cf0;
+    --screen: #0c0d18;
+    --note: #e6b86c;
+    --note-soft: #2c2618;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #15172a;
+  --panel: #1d2036;
+  --ink: #dfe2f1;
+  --muted: #9ca2c0;
+  --rule: #2d3150;
+  --accent: #a59cf0;
+  --screen: #0c0d18;
+  --note: #e6b86c;
+  --note-soft: #2c2618;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font: 16px/1.6 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding-inline: 20px; padding-block: 40px 64px;
+}
+main { max-width: 860px; margin: 0 auto; display: grid; gap: 56px; }
+a { color: var(--accent); }
+a:focus-visible, video:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+header { display: grid; gap: 14px; }
+.mark { font: 500 13px/1 "IBM Plex Mono", ui-monospace, Menlo, monospace; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font: 600 clamp(40px, 8vw, 64px)/1 "IBM Plex Sans Condensed", "Arial Narrow", sans-serif; letter-spacing: -0.01em; }
+.lede { margin: 0; max-width: 64ch; font-size: 18px; }
+.meta { margin: 0; max-width: 64ch; color: var(--muted); }
+nav { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 15px; }
+.demos { display: grid; gap: 64px; }
+article { display: grid; gap: 14px; }
+.screen { background: var(--screen); border-radius: 6px; padding: 8px; }
+video { display: block; width: 100%; height: auto; aspect-ratio: 384 / 272; image-rendering: pixelated; border-radius: 2px; background: #000; }
+h2 { margin: 0; font: 600 26px/1.2 "IBM Plex Sans Condensed", sans-serif; text-wrap: balance; }
+article p { margin: 0; max-width: 66ch; }
+.facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font: 400 14px/1.5 "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+.facts li::before { content: "measured  "; color: var(--muted); }
+.how { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 400 13px/1.5 "IBM Plex Mono", monospace; color: var(--muted); }
+.how code { color: var(--ink); }
+.note { border-left: 3px solid var(--note); background: var(--note-soft); padding: 10px 14px; border-radius: 0 6px 6px 0; max-width: 66ch; font-size: 15px; }
+.note strong { color: var(--note); font-weight: 500; }
+footer { border-top: 1px solid var(--rule); padding-top: 18px; color: var(--muted); font-size: 14px; display: grid; gap: 6px; }
+footer p { margin: 0; max-width: 72ch; }
+@media (max-width: 440px) { body { padding-inline: 16px; } .lede { font-size: 17px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="mark">A C64 and REU game engine · MIT</div>
+    <h1>backlot-64</h1>
+    <p class="lede">An engine for the Commodore 64 that treats a RAM Expansion Unit as the machine's real memory and the 64 KB as a cache: worlds, art, scripts and code stream in by DMA while assembly does the per-frame work.</p>
+    <p class="meta">Every clip below was recorded in VICE on the reference machine, a stock 1 MHz C64 with an 8 MB REU, frame by frame at 50 frames a second. Every number is one that <code>make check</code> measures on each push.</p>
+    <nav>
+      <a href="https://github.com/Stevenic/backlot-64">Source on GitHub</a>
+      <a href="https://github.com/Stevenic/backlot-64/blob/main/docs/PLAN.md">The plan</a>
+      <a href="https://github.com/Stevenic/backlot-64/blob/main/docs/JOURNAL.md">How it is being built</a>
+      <a href="https://github.com/Stevenic/backlot-64/blob/main/CREDITS.md">Credits</a>
+    </nav>
+  </header>
+  <div class="demos">
+    <article id="traffic">
+      <div class="screen"><video src="video/traffic.mp4" poster="video/traffic.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="Traffic, with the player&#x27;s car in it, recorded in VICE"></video></div>
+      <h2>Traffic, with the player&#x27;s car in it</h2>
+      <p>The light-green car is the player&#x27;s, on hardware sprite 0, which the multiplexer never touches. Up to 24 others drive Bellamar&#x27;s grid: they keep their lanes by reading the map&#x27;s road bits, turn at crossings, stop at the lights, queue, and stay out of a crossing whose exit is jammed. A raster line can show eight sprites and the player&#x27;s car is one, so traffic may put at most seven on any line; a governor counts every car against the lines it covers, so an east-west street carries at most seven moving cars besides the player.</p>
+      <ul class="facts"><li>0 sprites dropped by the multiplexer in 3,000 frames</li><li>at most 7 traffic sprites on any line</li><li>12 to 14 cars live, 10 to 12 on screen</li><li>1 to 5 percent of frames lost at 1 MHz, by route</li></ul>
+      <p class="note"><strong>Known fault.</strong> The status row flickers: the split that shows it sometimes lands a few cycles late. A known engine fault, recorded with its measurements, and the next one to fix.</p>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/examples/traffic"><code>examples/traffic</code></a></span><span>run <code>make run-traffic</code></span><span>checked by <code>traffic.auto, traffic.by_hand, traffic.frames_lost</code></span></div>
+    </article>
+    <article id="scroller">
+      <div class="screen"><video src="video/scroller.mp4" poster="video/scroller.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="A 4 MB world, scrolled, recorded in VICE"></video></div>
+      <h2>A 4 MB world, scrolled</h2>
+      <p>A 2,048 by 2,048 metatile map lives in the REU; the C64 holds only the screen. Each frame the scroller shifts the screen with one DMA from an REU copy of it and fills the new column or row from the map. The car at the centre and the cars around it are the multiplexer&#x27;s test load; the numbers are the scroller&#x27;s own cost in cycles.</p>
+      <ul class="facts"><li>worst cell crossing 5,754 cycles against a 6,000 target</li><li>15 frames compared cell by cell with a full redraw: 0 wrong</li></ul>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/examples/scroll"><code>examples/scroll</code></a></span><span>run <code>make run-scroll</code></span><span>checked by <code>scroll.picture, bench.scroll_*</code></span></div>
+    </article>
+    <article id="cutscene">
+      <div class="screen"><video src="video/cutscene.mp4" poster="video/cutscene.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="A cutscene in p-code, recorded in VICE"></video></div>
+      <h2>A cutscene in p-code</h2>
+      <p>The scene is a script for the engine&#x27;s virtual machine, read from the REU through a page cache; none of it is resident. A cruiser drives in as sprites, eases to a stop with its wheels turning and its light bar flashing, parks into the bitmap as a block, pixel for pixel, and drives off. The wet road&#x27;s reflections shimmer by swapping colour codes, never the bitmap.</p>
+      <ul class="facts"><li>the park changes no pixel outside the ones that shimmer</li><li>after the drive off the street is the empty street, pixel for pixel</li><li>82 to 118 cycles a p-code opcode</li></ul>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/examples/cutscene"><code>examples/cutscene</code></a></span><span>run <code>make run-cutscene</code></span><span>checked by <code>tier8.cutscene.*, cutscene.tick_*</code></span></div>
+    </article>
+    <article id="lighting">
+      <div class="screen"><video src="video/lighting.mp4" poster="video/lighting.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="Lighting as data, recorded in VICE"></video></div>
+      <h2>Lighting as data</h2>
+      <p>Dusk falls through 32 colour maps streamed from the REU, 1.6 KB each, landed in the vertical blank; the bitmap never changes. The cruiser&#x27;s light bar is declared in its own object file with each lamp&#x27;s offset, radius and pattern, so the lamps and the light they throw on the street move with it and cannot drift apart.</p>
+      <ul class="facts"><li>no relit pixel beyond a light&#x27;s declared radius</li><li>each lamp in its own colour at the declared offset</li><li>the park is exact after the lights go off</li></ul>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/examples/showcase"><code>examples/showcase</code></a></span><span>run <code>make run-showcase</code></span><span>checked by <code>tier8.showcase.*</code></span></div>
+    </article>
+    <article id="multiplexer">
+      <div class="screen"><video src="video/multiplexer.mp4" poster="video/multiplexer.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="32 sprites from 7, recorded in VICE"></video></div>
+      <h2>32 sprites from 7</h2>
+      <p>The multiplexer&#x27;s test harness: 32 sprites, one every 4 lines, the densest seven hardware sprites can reuse. Every decision is made in the main loop; the raster interrupts only copy, through a routine generated for each hardware sprite. A check breaks at every sprite move and holds it to the VIC-II&#x27;s own timing, cycle by cycle.</p>
+      <ul class="facts"><li>0 timing violations in 1,280 sprite moves</li><li>8,586 main-loop and 8,389 interrupt cycles a frame for 32</li><li>24 on a stock C64 in a game; 32 and 64 with the Ultimate&#x27;s turbo</li></ul>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/examples/mux"><code>examples/mux</code></a></span><span>run <code>make run-mux</code></span><span>checked by <code>mux.normal.timing, mux.dense.timing, mux.picture</code></span></div>
+    </article>
+    <article id="mux64">
+      <div class="screen"><video src="video/mux64.mp4" poster="video/mux64.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="64 sprites, on a machine too slow for them, recorded in VICE"></video></div>
+      <h2>64 sprites, on a machine too slow for them</h2>
+      <p>The layout for the turbo tier&#x27;s 64 sprites, one every 3 lines, run on a stock 1 MHz machine. The allocation knows how long the interrupt chain takes, so what it cannot write in time it drops whole rather than draw late: 51 of 64 here. Building a 64-sprite list takes more than a frame at 1 MHz, which is why the positions step: this is the case the turbo is for.</p>
+      <ul class="facts"><li>51 of 64 shown at 1 MHz, none written late (every write stamped)</li><li>the stamps agree with the emulator&#x27;s clock to 2 cycles</li><li>untested on a C64 Ultimate until the hardware arrives</li></ul>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/examples/mux"><code>examples/mux (MUX64)</code></a></span><span>run <code>make build/mux64.prg</code></span><span>checked by <code>muxhw.mux64, muxhw.clock</code></span></div>
+    </article>
+  </div>
+  <footer>
+    <p>Recorded 2026-09-18 from commit <a href="https://github.com/Stevenic/backlot-64/commit/96118ed4bf3a098a91fdcb8a604713d177334e22"><code>96118ed</code></a> with <code>make pages</code> (<code>tools/b64site.py</code>, <code>tools/b64video.py</code>).</p>
+    <p>backlot-64 is MIT licensed. The techniques it borrows, and where it departs from them, are credited in CREDITS.md and docs/PRIOR-ART.md.</p>
+  </footer>
+</main>
+<script>
+if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  document.querySelectorAll("video").forEach(v => { v.removeAttribute("autoplay"); v.pause(); });
+}
+</script>
+</body>
+</html>
