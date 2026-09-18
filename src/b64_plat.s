@@ -30,6 +30,7 @@
 .export b64_heap_reset
 
 .import vm_budget_max
+.import spr_limit
 
 .segment "LOWRAM"
 b64_plat:       .res 1          ; B64_PLAT_* bits
@@ -161,6 +162,14 @@ b64_plat_probe:
         beq :+
         ldx #255
 :       stx vm_budget_max
+        ; the sprite list: 32 with the turbo, 24 on a stock machine, where 32
+        ; at the densest layout costs the whole frame
+        ldx #B64_SPR_STOCK
+        lda b64_plat
+        and #B64_PLAT_TURBO
+        beq :+
+        ldx #B64_MAX_SPRITES
+:       stx spr_limit
         jsr b64_heap_reset
         rts
 

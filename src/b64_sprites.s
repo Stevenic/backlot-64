@@ -43,6 +43,7 @@
 .export mux_schedule
 .export spr_slots_reset
 .export spr_init
+.export spr_limit
 .export spr_ready
 .export mux_first
 .export mux_rout, spr_rejected, mux_b_y, mux_acc   ; for the checks
@@ -102,6 +103,7 @@ T_LEN   = 52
 
 .segment "LOWRAM"
 spr_ready:      .res 1          ; 1 = a finished list waits for the next vblank
+spr_limit:      .res 1          ; entries b64_spr_add accepts a frame: set by the platform probe
 ord:            .res B64_MAX_SPRITES    ; sorted order (entries 0..n-1), kept from frame to frame
 ord_n:          .res 1          ; the count the order was built for
 free_at:        .res 8          ; per hardware sprite: the first line after its occupant is shown
@@ -175,7 +177,7 @@ b64_spr_begin:
 
 b64_spr_add:
         ldx spr_count_b
-        cpx #B64_MAX_SPRITES
+        cpx spr_limit
         bcs @full
         ldx b64_spr_slot
         cpx #B64_SPR_SLOTS
@@ -212,6 +214,8 @@ b64_spr_add:
 spr_init:
         lda #$FF
         sta rr_first
+        lda #B64_SPR_STOCK
+        sta spr_limit
 ; forget every slot's contents so the next add fetches; empty lists
 spr_slots_reset:
         lda #0

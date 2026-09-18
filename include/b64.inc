@@ -375,7 +375,8 @@ mux_tmp2        = $4F
 
 B64_SPR_FLAG_MC   = $01
 B64_SPR_FLAG_PRIO = $02
-B64_MAX_SPRITES   = 32          ; virtual sprites the multiplexer takes each frame
+B64_MAX_SPRITES   = 32          ; virtual sprites the multiplexer can take a frame (with the Ultimate's turbo)
+B64_SPR_STOCK     = 24          ; the limit on a stock C64: 32 at 1 MHz takes the whole frame (docs/PLAN.md 3.4)
 B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each at B64_SPRITES
 
 ; ---------------------------------------------------------------------------

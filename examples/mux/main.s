@@ -25,6 +25,7 @@
 .include "slots.inc"
 
 .export game_main
+.import spr_limit
 
 NSPR    = 32
 DENSE_AT = 400
@@ -39,6 +40,10 @@ idx:    .res 1
 .segment "GAME"
 game_main:
         jsr b64_init
+        ; the harness tests the 32-sprite path in VICE at 1 MHz, where the
+        ; engine would allow 24: it raises the limit itself
+        lda #B64_MAX_SPRITES
+        sta spr_limit
         B64_SET24 b64_reu, SLOT_TILESET0
         jsr b64_load_tileset    ; the HUD's font
         ldx #12

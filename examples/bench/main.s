@@ -22,6 +22,7 @@
 .import spr_slots_reset
 .import scr_vblank
 .import spr_ready
+.import spr_limit
 .export game_main
 
 .segment "GAMETOP"
@@ -119,10 +120,13 @@ game_main:
         ldx #8
         jsr scroll_once
 
-        ; --- the multiplexer's decisions, two consecutive frames (the VM
+        ; --- the multiplexer's decisions, two consecutive frames, with the
+        ; 32-sprite limit the turbo tier gets (the VM
         ; ticks above finished lists nobody took: interrupts are off)
         lda #0
         sta spr_ready
+        lda #B64_MAX_SPRITES
+        sta spr_limit
         lda #40
         sta bt
         jsr mux_list
