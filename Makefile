@@ -195,6 +195,14 @@ $(BUILD)/traffic.prg: $(ENGINE_OBJS) $(BUILD)/traffic.o $(CFG)
 $(BUILD)/traffic-auto.prg: $(ENGINE_OBJS) $(BUILD)/traffic-auto.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/traffic-auto.o -Ln $(BUILD)/traffic-auto.lbl
 
+# the demo site: every example recorded in VICE (tools/b64site.py); the videos
+# live only on the gh-pages branch, which GitHub Pages serves
+.PHONY: pages publish-pages
+pages: all $(BUILD)/mux64.prg $(REU8)
+	$(PY) tools/b64site.py
+publish-pages: pages
+	$(PY) tools/b64site.py --publish
+
 run-traffic: $(BUILD)/traffic.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/traffic.prg
 

@@ -8,6 +8,8 @@ Two halves. The rendering half draws a multicolour character-mode world of up to
 
 See [docs/PLAN.md](docs/PLAN.md) for principles, budgets, memory map, API, data formats, and milestones, and [docs/PREPARE.md](docs/PREPARE.md) for how to prepare every kind of data the engine consumes. [docs/ROADMAP.md](docs/ROADMAP.md) is where it is going, [docs/PRIOR-ART.md](docs/PRIOR-ART.md) is what it learned from other C64 engines, and [CREDITS.md](CREDITS.md) names everyone whose work it stands on.
 
+**Watch it:** every example, recorded in VICE on a stock C64 with an 8 MB REU, is on the demo site at https://stevenic.github.io/backlot-64/ (`make pages` records them; `make publish-pages` updates the site).
+
 ## Requirements
 
 ```
