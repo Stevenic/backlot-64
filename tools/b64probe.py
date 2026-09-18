@@ -137,7 +137,11 @@ def decode(b, labels, slabels):
 def report(pr, slabels):
     names = [n for bit, n in ((1, "reu"), (2, "reu16"), (4, "turbo"), (8, "audio"), (16, "uci")) if pr["platform"] & bit]
     print(f"platform: {' '.join(names)}; REU {pr['reu_mb']} MB; frame {pr['frame']}")
-    print(f"tick: last {pr['tick_last']} cycles, worst {pr['tick_max']}")
+    # the CIA timers count the 1 MHz clock at every turbo speed (measured on
+    # hardware for DOOM C64U and on an Ultimate 64 Elite), so under turbo the
+    # tick is wall time in microseconds, not CPU cycles executed
+    unit = "microseconds (turbo: the CIA clock stays at 1 MHz)" if pr["platform"] & 4 else "cycles"
+    print(f"tick: last {pr['tick_last']} {unit}, worst {pr['tick_max']}")
     hist = pr["tick_hist_1k"]; total = sum(hist) or 1
     print("tick histogram (1,024-cycle buckets): " + " ".join(f"{i}k:{h}" for i, h in enumerate(hist) if h))
     # engine hot spots
