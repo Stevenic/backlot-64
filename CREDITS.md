@@ -35,6 +35,10 @@ Details and rankings are in `docs/PRIOR-ART.md`. Each adopted technique also car
 - **The cc65 project**: `ca65` and `ld65`.
 - **Commodore Business Machines**: the machine, and the 1750 REU whose DMA controller this engine treats as its memory bus.
 
+## Departures
+
+Where this engine changes a borrowed idea, the change and its reason are recorded in `docs/PRIOR-ART.md` under "Where this engine departs from its sources", and in the source comment at the point of use. An improvement is only called one when it has been measured.
+
 ## How this project was built
 
 The engine was designed and directed by Steven Ickman and written with AI assistance (Anthropic's Claude), which is disclosed in every commit's trailer. Every performance claim was measured in VICE; every visual claim was checked by frame diff; the platform code for tiers VICE cannot reach is marked untested until it has run on hardware. Using or contributing to the engine needs no AI: it is plain `ca65` assembly and Python. Generated concept art in `images/` is placeholder and will be replaced by hand-drawn work before any release.

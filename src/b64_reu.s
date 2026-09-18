@@ -14,6 +14,10 @@ b64_fetch:
 b64_stash:
         lda #REU_CMD_STASH
 reu_go:
+        ; The hazard (an interrupt issuing its own DMA between the setup and
+        ; the go) is the one DOOM C64U repairs by saving the REU registers in
+        ; its handler; here it is prevented instead.  Changed, not measured
+        ; as better: a handler that must issue a DMA still needs DOOM's form.
         php                     ; no interrupt between the register writes and the go
         sei
         pha

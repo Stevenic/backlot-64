@@ -12,8 +12,15 @@
 ; boundary; for that one instruction vm_page points at the buffer, Y counts
 ; from 0, and the start offset is added back when the instruction ends.
 ;
-; The push-and-return dispatch is the SWEET16 pattern (Wozniak); the
-; page-relative fetch is the Å-machine's idea (Åkesson).  See CREDITS.md.
+; Dispatch after Steve Wozniak, SWEET16 (push-and-return through a table).
+; Changed: two split tables instead of one page, costing one extra push;
+; the roadmap replaces this with the Å-machine's jmp (table).
+; Page-relative fetch after Linus Åkesson, Å-machine (engine.s fetchnext).
+; Changed: an instruction that straddles a page runs from a copy in a small
+; buffer instead of wrapping per byte; measured a wash in cycles and more
+; code, so the roadmap takes the per-byte wrap.  Immediate forms share the
+; register handler through a hidden variable (VM_T), a departure from SCUMM
+; v0's parameter bits; measured in docs/PRIOR-ART.md.  See CREDITS.md.
 ;
 ; Convention inside an op: Y = offset lo, past the opcode.  Read operands
 ; with FETCH.  Ops that need Y for something else save it with sty vm_pc
