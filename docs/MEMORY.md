@@ -47,7 +47,8 @@ The map in `PLAN.md` section 5, with the current measured sizes.
 | $8000-$9FFF | 8 KB | Overlay region A | yes, whole |
 | $A000-$C0FF | 8.25 KB | Active metatile library and properties | swapped per region |
 | $C100-$C8FF | 2 KB | Page cache: eight 256-byte copies of REU pages | yes, per page |
-| $C900-$CFFF | 1.75 KB | Overlay region B | yes, whole |
+| $C900-$C9FF | 256 B | The VM's vector table | no |
+| $CA00-$CFFF | 1.5 KB | Overlay region B | yes, whole |
 | $D000-$DFFF | 4 KB | I/O | |
 | $E000-$FFF9 | 8 KB | Game hot state: entity table, player, mission registers | parts stream (section 5) |
 

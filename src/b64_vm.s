@@ -72,6 +72,14 @@ vm_line:        .res 41         ; TEXT copies its string here
 b64_vm_start:
         sta th_pclo
         stx th_pchi
+        ; the vector table must sit on a page boundary; the linker cannot
+        ; align it inside the padded core without wasting the gap, so it is
+        ; copied to its page here (256 bytes, once per script start)
+        ldx #0
+:       lda vm_optab,x
+        sta B64_VM_TABLE,x
+        inx
+        bne :-
 .ifdef VM_TRACE
         lda #0
         sta $E0FF
@@ -156,7 +164,7 @@ vm_go:  sta vm_jmp+1            ; doubled opcode = low byte of the vector
         inc probe_opcount_hi,x
 :
 .endif
-vm_jmp: jmp (vm_optab)          ; page-aligned: the high byte never changes
+vm_jmp: jmp (B64_VM_TABLE)      ; a page-aligned copy of vm_optab: the high byte never changes
 vm_exec_wrap:
         pha
         jsr vm_advance
@@ -762,6 +770,19 @@ op_light:
         sta b64_reu+2
         jsr b64_cut_light
         jmp back
+; LIGHTS lightfile24, lamp24, n
+op_lights:
+        SLOT
+        FETCH
+        sta b64_val
+        FETCH
+        sta b64_val+1
+        FETCH
+        sta b64_val+2
+        FETCH
+        sty vm_pc
+        jsr b64_obj_lights
+        jmp back
 ; spr_xy: operands vx, vy -> b64_spr_x/y; the offset is saved
 spr_xy:
         FETCH
@@ -778,9 +799,9 @@ spr_xy:
         rts
 
 ; ---------------------------------------------------------------------------
-; the vector table: 128 words on a page boundary, indexed by the doubled
-; opcode byte; unused entries are END
-.segment "VMTAB"
+; the vector table: 128 words, copied to the page at B64_VM_TABLE, indexed
+; by the doubled opcode byte; unused entries are END
+.segment "RODATA"
 vm_optab:
         .word op_end, op_wait, op_yield, op_jmp, op_spawn, op_call, op_ret, op_loop
         .word op_ldi, op_mov, op_add, op_addi, op_sub, op_subi, op_and, op_andi
@@ -788,7 +809,7 @@ vm_optab:
         .word op_jlt, op_jlti, op_jge, op_jgei, op_jeq, op_jeqi, op_jne, op_jnei
         .word op_ldt, op_frame, op_joy
         .word op_still, op_object, op_shimmer, op_text, op_cleartext, op_blit, op_restore
-        .word op_park, op_unpark, op_objspr, op_objanim, op_sprite, op_pcm, op_light
+        .word op_park, op_unpark, op_objspr, op_objanim, op_sprite, op_pcm, op_light, op_lights
 .repeat 128-VM_OP_COUNT
         .word op_end
 .endrepeat

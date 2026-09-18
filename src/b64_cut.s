@@ -21,6 +21,8 @@
 .export shim_on
 .export b64_cut_frame
 .export b64_cut_light
+.export b64_obj_lights
+.export light_cur, light_pending, lights_on, obj_nlights, obj_x, light_hdr, obj_lights   ; for the probe and tests
 .export cut_row_lo, cut_row_hi
 
 CUT_BITMAP      = $6000
@@ -71,6 +73,13 @@ shim_rx1:       .res 1
 shim_ry0:       .res 1
 shim_ry1:       .res 1
 anim_hdr:       .res 10         ; nframes, nsprites, up to 8 sprite indices
+obj_nlights:    .res 1          ; the object's light sources (lights section of the .b64o)
+obj_lights:     .res 64         ; up to 4 x 16: dx, dy, radius, lamp, npat, pad, (colour, frames) x 4
+lights_on:      .res 1          ; 1 = the engine lights the set from the object's lights
+lights_slot:    .res 3          ; the baked lighting file for this set and object
+lamp_slot:      .res 3          ; the lamp sprite frame
+light_hdr:      .res 34         ; the file's layout: 'L', n, x0 lo/hi, xstep, npos, per light base lo/hi, ncol, colours[4]
+light_cur:      .res 1          ; the state last queued, so a state is queued once
 anim_frame:     .res 1
 
 .segment "CODE"
@@ -624,7 +633,7 @@ shim_mask:
 ; colour codes of each listed reflection cell (nibble swap through a table)
 ; so the wet road moves.  It runs before the reflection rows are drawn, so
 ; the change lands within the frame; and it runs here, not in the vertical
-; blank, because 80 cells cost about 3,000 cycles and the interrupt must
+; blank, because 80 cells cost about 4,000 cycles and the interrupt must
 ; stay short.  Cells under a parked block are flagged and skipped.
 b64_cut_frame:
         lda shim_on
@@ -642,9 +651,18 @@ b64_cut_frame:
         sta b64_ptr
         ldy #0
         lda (b64_ptr),y
-        tay
-        lda nibble_swap,y
-        ldy #0
+        sta b64_tmp+6
+        asl
+        asl
+        asl
+        asl
+        sta b64_tmp+7
+        lda b64_tmp+6
+        lsr
+        lsr
+        lsr
+        lsr
+        ora b64_tmp+7
         sta (b64_ptr),y
 @skip:  inx
         bne @cell
@@ -756,7 +774,280 @@ b64_obj_load:
         sta anim_hdr
 :       lda #0
         sta anim_frame
+        ; the lights section follows the animation section:
+        ; anim size = 2 + nsprites + nframes * nsprites * 64
+        lda #0
+        sta obj_nlights
+        lda anim_hdr+1          ; nsprites (0 when there is no animation)
+        clc
+        adc #2
+        sta b64_len
+        lda #0
+        sta b64_len+1
+        jsr reu_advance_len
+        lda anim_hdr            ; nframes
+        beq @lights
+        ldx anim_hdr+1          ; frames * sprites * 64: sprites <= 8, frames <= 8
+        lda #0
+:       clc
+        adc anim_hdr
+        dex
+        bne :-                  ; A = frames * sprites (<= 64)
+        ldx #0
+        stx b64_len
+        lsr
+        ror b64_len
+        lsr
+        ror b64_len             ; * 64 = << 6: high = A >> 2, low = (A & 3) << 6
+        sta b64_len+1
+        jsr reu_advance_len
+@lights:
+        B64_SET16 b64_ptr, obj_nlights
+        B64_SET16 b64_len, 65
+        jsr b64_fetch
+        lda obj_nlights
+        cmp #5
+        bcc :+
+        lda #0                  ; no lights section (garbage count): none
+        sta obj_nlights
+:       rts
+
+; b64_obj_lights: b64_reu = the baked lighting file, b64_ptr = lamp sprite
+; frame address (24-bit in b64_ptr..+2 via b64_val), A = 1 on / 0 off.
+; On: read the file's layout header and light the set from the object's
+; position and patterns every frame it is drawn.  Off: restore state 0.
+b64_obj_lights:
+        sta lights_on
+        lda b64_reu
+        sta lights_slot
+        lda b64_reu+1
+        sta lights_slot+1
+        lda b64_reu+2
+        sta lights_slot+2
+        lda b64_val
+        sta lamp_slot
+        lda b64_val+1
+        sta lamp_slot+1
+        lda b64_val+2
+        sta lamp_slot+2
+        lda #$FF
+        sta light_cur
+        lda lights_on
+        beq @off
+        ; the layout header sits at offset 1601 of state 0
+        lda b64_reu
+        clc
+        adc #<1601
+        sta b64_reu
+        lda b64_reu+1
+        adc #>1601
+        sta b64_reu+1
+        bcc :+
+        inc b64_reu+2
+:       B64_SET16 b64_ptr, light_hdr
+        B64_SET16 b64_len, 34
+        jsr b64_fetch
         rts
+@off:   jsr b64_cut_light       ; state 0: the set as it is
+        rts
+
+; lights_tick: called from b64_obj_sprites with the object at obj_x/obj_y.
+; For each light: its pattern entry for this frame; a lamp sprite if the
+; light has one and is on; and the map for (light, position, colour),
+; queued when it differs from the last one.
+lights_tick:
+        lda lights_on
+        bne :+
+        rts
+:
+        lda #0
+        sta b64_tmp+4           ; light index
+        sta b64_tmp+5           ; state chosen this frame, 0 = none yet
+@light: lda b64_tmp+4
+        cmp obj_nlights
+        bcc :+
+        jmp @apply
+:
+        asl
+        asl
+        asl
+        asl
+        tax                     ; X = record offset
+        ; pattern: total = sum of frames; t = frame mod total; walk entries
+        lda #0
+        ldy obj_lights+4,x      ; npat
+        sty b64_tmp+6
+:       clc
+        adc obj_lights+7,x      ; frames of entry (x + 6 + 2k + 1): sum via a walking index
+        inx
+        inx
+        dey
+        bne :-
+        sta b64_tmp+7           ; total
+        txa
+        sec
+        sbc b64_tmp+6
+        sbc b64_tmp+6
+        tax                     ; back to the record
+        lda b64_frame
+:       cmp b64_tmp+7
+        bcc :+
+        sbc b64_tmp+7
+        jmp :-
+:       ldy obj_lights+4,x
+@walk:  cmp obj_lights+7,x
+        bcc @entry
+        sbc obj_lights+7,x
+        inx
+        inx
+        dey
+        bne @walk
+        dex                     ; ran past (rounding): use the last entry
+        dex
+@entry: ldy obj_lights+6,x      ; the entry's colour, 0 = off
+        ; X is now record + 2k; the record base is X - 2k; recover it by
+        ; walking back is messy, so keep the base in b64_tmp+6
+        sty b64_tmp+6
+        lda b64_tmp+4
+        asl
+        asl
+        asl
+        asl
+        tax
+        lda b64_tmp+6
+        bne :+
+        jmp @next               ; off this frame: no lamp, no map
+:
+        ; lamp sprite
+        lda obj_lights+3,x
+        beq @map
+        lda obj_x
+        clc
+        adc obj_lights,x
+        sta b64_spr_x
+        lda obj_x+1
+        adc #0
+        sta b64_spr_x+1
+        lda obj_y
+        clc
+        adc obj_lights+1,x      ; dy, signed
+        sta b64_spr_y
+        lda b64_tmp+6
+        sta b64_spr_colour
+        lda #23
+        sec
+        sbc b64_tmp+4
+        sta b64_spr_slot
+        lda #0
+        sta b64_spr_flags
+        lda lamp_slot
+        sta b64_reu
+        lda lamp_slot+1
+        sta b64_reu+1
+        lda lamp_slot+2
+        sta b64_reu+2
+        jsr b64_spr_add
+@map:   ; state = base + pos * ncol + colour index
+        lda b64_tmp+4
+        asl
+        asl
+        asl
+        sec
+        sbc b64_tmp+4           ; light * 7
+        clc
+        adc #6
+        tay                     ; Y = 6 + light * 7: the light's entry in the file header
+        ; colour index
+        ldx #0
+@ci:    lda light_hdr+3,y       ; colours[x]
+        cmp b64_tmp+6
+        beq @found
+        iny
+        inx
+        cpx #4
+        bcc @ci
+        jmp @next               ; colour not in the file
+@found: stx b64_tmp+6           ; colour index
+        tya
+        sec
+        sbc b64_tmp+6
+        tay                     ; Y = 6 + light * 7 again (the search advanced Y once per colour tried)
+        ; pos = (obj_x - x0) / xstep, clamped to npos - 1
+        lda obj_x
+        sec
+        sbc light_hdr+2
+        sta b64_tmp+7
+        lda obj_x+1
+        sbc light_hdr+3
+        bcs :+
+        lda #0                  ; left of x0
+        sta b64_tmp+7
+        beq @div
+:       bne @max                ; 256 or more px past x0: clamp
+        lda b64_tmp+7
+@div:   ldx #0
+:       cmp light_hdr+4         ; xstep
+        bcc @pos
+        sbc light_hdr+4
+        inx
+        jmp :-
+@max:   ldx light_hdr+5
+        dex
+        jmp @pos2
+@pos:   cpx light_hdr+5
+        bcc @pos2
+        ldx light_hdr+5
+        dex
+@pos2:  ; state = base + pos * ncol + ci  (8-bit state numbers suffice here)
+        txa
+        sta b64_tmp+7
+        lda #0
+        ldx light_hdr+2,y       ; ncol
+        bne :+
+        jmp @next
+:
+:       clc
+        adc b64_tmp+7
+        dex
+        bne :-
+        clc
+        adc b64_tmp+6           ; + colour index
+        clc
+        adc light_hdr,y         ; + base lo
+        sta b64_tmp+5           ; the state for this light this frame
+@next:  inc b64_tmp+4
+        jmp @light
+@apply: lda b64_tmp+5
+        beq @done               ; no light on: leave the last map (the pattern's off entries)
+        cmp light_cur
+        beq @done
+        sta light_cur
+        ; address = lights_slot + state * 2048
+        lda lights_slot
+        sta b64_reu
+        lda b64_tmp+5
+        and #31
+        asl
+        asl
+        asl
+        clc
+        adc lights_slot+1
+        sta b64_reu+1
+        lda #0
+        adc #0
+        sta b64_tmp+6
+        lda b64_tmp+5
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc b64_tmp+6
+        adc lights_slot+2
+        sta b64_reu+2
+        jsr b64_cut_light
+@done:  rts
 
 ; b64_obj_anim: A = frame
 b64_obj_anim:
@@ -934,7 +1225,7 @@ b64_obj_sprites:
         cmp obj_hdr+1
         beq :+
         jmp @row
-:       rts
+:       jmp lights_tick
 
 b64_obj_park:
         sta park_x
@@ -1138,8 +1429,3 @@ cut_row_hi:
 .endrepeat
 
 .segment "RODATA"
-; nibble_swap: the byte with its two colour codes exchanged
-nibble_swap:
-.repeat 256, i
-        .byte ((i & $0F) << 4) | (i >> 4)
-.endrepeat

@@ -1,10 +1,12 @@
 ; backlot-64 showcase: baked lighting, streamed from the REU.
 ;
-; Day falls to night over the Club Bellamar street through 32 precomputed
-; colour maps, each landed in the vertical blank as 1.6 KB of DMA; the
-; bitmap never changes.  Then the night set with the neon on, the cruiser
-; drives in, and a red and blue strobe washes the whole scene in step with
-; its light bar: two more colour maps.  All of it is this p-code.
+; Day falls to night over a sunset still through 32 precomputed colour
+; maps, each landed in the vertical blank as 1.6 KB of DMA; the bitmap
+; never changes.  Then the night street: the cruiser drives in and its
+; light bar, declared in the object file with a pattern and a radius,
+; lights the surfaces near it from maps baked for every position, in step
+; with the lamp sprites the engine draws for it.  All of it is this p-code
+; and one LIGHTS opcode.
 
 .include "b64.inc"
 .include "slots.inc"
@@ -23,15 +25,11 @@ SX      = 8
 LX      = 9
 LY      = 10
 CAR     = 11
-BEACON  = 12
 STEP    = 13
-STROBE  = 14                    ; 0 off, 1 on: the draw thread lights the scene with the lamp
 
 script:
         V_STILL   SLOT_DAYSET
         V_LDI     CAR, 0
-        V_LDI     BEACON, 0
-        V_LDI     STROBE, 0
         V_LDI     WFR, 0
         V_LDI     WACC, 0
         V_SPAWN   draw
@@ -56,15 +54,11 @@ script:
         V_LDI     AY, 162
         V_LDI     CAR, 1
         V_LDI     TGT, 240*16
-        V_LDI     BEACON, 1
-        V_LDI     STROBE, 1
+        V_LIGHTS  SLOT_NIGHTLIGHT, SLOT_LAMP, 1   ; the cruiser's own lights, on
         V_CALL    drive
-        V_TEXT    22, 2, "THE LAMP LIGHTS ONLY WHAT IS NEAR IT"
+        V_TEXT    22, 2, "THE LIGHTS ARE PART OF THE CAR"
         V_WAIT    200
-        V_LDI     STROBE, 0
-        V_LDI     STEP, 0
-        V_LIGHT   SLOT_NIGHTLIGHT, STEP     ; back to the plain night
-        V_LDI     BEACON, 0
+        V_LIGHTS  SLOT_NIGHTLIGHT, SLOT_LAMP, 0   ; off: the set as it is
         V_WAIT    16
         V_PARK    27, 14
         V_LDI     CAR, 0
@@ -97,46 +91,13 @@ drive:
         V_OBJANIM WFR
         V_RET
 
-; lampstate: STEP = 2 * (lamp position 0-19) from the car's x, so the
-; state that follows is the map lit around this lamp (b64light.py beacon:
-; lamp cell x = 2p + 5; the lamp sits 46 px right of the car's left edge)
-lampstate:
-        V_MOV     STEP, SX
-        V_ADDI    STEP, 6
-        V_SHR     STEP, 4
-        V_MINI    STEP, 19
-        V_SHL     STEP, 1
-        V_RET
-
-; draw: the actor, its light bar, and when STROBE is on, the surfaces
-; near the lamp lit to match: red for 8 frames, blue for 8, each map
-; landing on the base-phase blank of its half
+; draw: the actor.  Its light bar and the light it throws on the set are
+; the object's own: LIGHTS in the main thread turns them on, and the
+; engine draws the lamps and lands the maps from the object's patterns.
 draw:
         V_JEQI    CAR, 0, @none
         V_MOV     SX, AX
         V_SHR     SX, 4
         V_OBJSPR  1, SX, AY
-        V_JEQI    BEACON, 0, @none
-        V_FRAME   T
-        V_ANDI    T, 15
-        V_MOV     LY, AY
-        V_SUBI    LY, 6
-        V_MOV     LX, SX
-        V_JGEI    T, 8, @blue
-        V_ADDI    LX, 40
-        V_SPRITE  23, LX, LY, 2, SLOT_LAMP
-        V_JEQI    STROBE, 0, @none
-        V_JNEI    T, 0, @none
-        V_CALL    lampstate
-        V_ADDI    STEP, 1                   ; the red map for this lamp position
-        V_LIGHT   SLOT_NIGHTLIGHT, STEP
-        V_JMP     @none
-@blue:  V_ADDI    LX, 52
-        V_SPRITE  23, LX, LY, 6, SLOT_LAMP
-        V_JEQI    STROBE, 0, @none
-        V_JNEI    T, 8, @none
-        V_CALL    lampstate
-        V_ADDI    STEP, 2                   ; the blue map
-        V_LIGHT   SLOT_NIGHTLIGHT, STEP
 @none:  V_YIELD
         V_JMP     draw

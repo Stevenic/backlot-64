@@ -14,6 +14,14 @@ modes:
                      still as it is, state N-1 = night
   strobe             three states: as it is, a red wash, a blue wash, the
                      whole scene lit alike (the first, crude version)
+  object <obj.b64o> --x0 X --xstep S --npos N --y Y
+                     bake the object's own light sources (its lights
+                     section) against the set for N object positions from
+                     VIC x X in steps of S, with the object at VIC y Y.  One
+                     map per light, position and pattern colour; a header
+                     in state 0's padding tells the engine the layout, so
+                     the engine applies the maps itself from the object's
+                     position and its patterns (LIGHTS opcode).
   beacon --positions P --row R --radius D
                      1 + 2P states: as it is, then for each lamp position
                      (cell x = 2p+5, cell row R) a red and a blue wash that
@@ -120,6 +128,68 @@ def beacon_states(still, positions, row, radius):
     return states
 
 
+def read_object_lights(path):
+    """The lights section of a .b64o: after header, spans, sprites, block,
+    and the animation section."""
+    d = open(path, "rb").read()
+    gw, gh, cw, ch = d[0], d[1], d[2], d[3]
+    off = 8 + 32 + gw * gh * 64 + cw * ch * 8 + cw * ch + cw * ch
+    nframes, nspr = d[off], d[off + 1]
+    off += 2 + nspr + nframes * nspr * 64
+    if off >= len(d):
+        return []
+    n = d[off]; off += 1
+    lights = []
+    for i in range(n):
+        r = d[off + 16 * i: off + 16 * i + 16]
+        dx = r[0]; dy = r[1] - 256 if r[1] > 127 else r[1]
+        pat = [(r[6 + 2 * k], r[7 + 2 * k]) for k in range(r[4])]
+        lights.append({"dx": dx, "dy": dy, "radius": r[2], "lamp": r[3], "pattern": pat})
+    return lights
+
+
+LAMP_RGB = {2: (255, 40, 40), 6: (60, 80, 255), 1: (255, 255, 220), 7: (255, 240, 120),
+            8: (255, 160, 40), 3: (120, 230, 255), 10: (255, 120, 160), 13: (160, 255, 160)}
+
+
+def object_states(still, lights, x0, xstep, npos, y):
+    """States for each light, position and pattern colour, plus the layout
+    header written into state 0's padding at offset 1601:
+      'L', nlights, x0 lo, x0 hi, xstep, npos, then per light:
+      base lo, base hi, ncolours, colour[4]  (7 bytes)"""
+    import math
+    ident = list(range(16))
+    states = [bytearray(apply(still, ident))]
+    hdr = bytearray([ord("L"), len(lights), x0 & 255, x0 >> 8, xstep, npos])
+    cache = {}
+    def table(lamp, w):
+        key = (lamp, round(w, 2))
+        if key not in cache:
+            cache[key] = remap_table(lambda c: tuple(c[i] * (1 - w) + lamp[i] * w for i in range(3)))
+        return cache[key]
+    for L in lights:
+        colours = []
+        for c, f in L["pattern"]:
+            if c and c not in colours:
+                colours.append(c)
+        base = len(states)
+        hdr += bytes([base & 255, base >> 8, len(colours)] + colours + [0] * (4 - len(colours)))
+        for p in range(npos):
+            # VIC x to screen cell: the visible area starts at VIC x 24; y at 50
+            lx = (x0 + p * xstep + L["dx"] - 24) / 8.0
+            ly = (y + L["dy"] - 50) / 8.0
+            for c in colours:
+                lamp = LAMP_RGB.get(c, RGB[c])
+                def tab_for_cell(cx, cy, lx=lx, ly=ly, lamp=lamp, R=L["radius"]):
+                    d = math.hypot(cx + 0.5 - lx, cy + 0.5 - ly)
+                    w = max(0.0, 1.0 - d / R)
+                    w = 0.95 * (w ** 1.5)
+                    return ident if w < 0.08 else table(lamp, w)
+                states.append(bytearray(apply_cells(still, tab_for_cell)))
+    states[0][1601:1601 + len(hdr)] = hdr
+    return [bytes(s) for s in states]
+
+
 def apply(still, tab):
     bg = still[0]
     screen = still[1 + 8000:1 + 8000 + 1000]
@@ -165,12 +235,19 @@ def main():
         tabs = dusk_tables(steps)
     elif mode == "strobe":
         tabs = strobe_tables()
+    elif mode == "object":
+        arg = lambda k, d: int(sys.argv[sys.argv.index(k) + 1]) if k in sys.argv else d
+        lights = read_object_lights(sys.argv[4])
+        if not lights:
+            raise SystemExit("the object has no lights section (b64object.py --lights=...)")
+        states = object_states(still, lights, arg("--x0", 24), arg("--xstep", 8), arg("--npos", 40), arg("--y", 162))
+        tabs = None
     elif mode == "beacon":
         arg = lambda k, d: int(sys.argv[sys.argv.index(k) + 1]) if k in sys.argv else d
         states = beacon_states(still, arg("--positions", 20), arg("--row", 13), arg("--radius", 9))
         tabs = None
     else:
-        raise SystemExit("mode: dusk | strobe | beacon")
+        raise SystemExit("mode: dusk | strobe | beacon | object")
     if tabs is not None:
         states = [apply(still, t) for t in tabs]
     blob = b"".join(states)

@@ -4,6 +4,7 @@
     b64object.py <in.png> <out.b64o> <gw> <gh> --colours=mc0,ind,mc1 [--key=black,dgray]
                  [--floor=dgray | --still=<still.bin> --at=cx,cy] [--preview=out.png]
                  [--shadow] [--wheels=auto | x,y,rx,ry,...] [--wheel-frames=4] [--patch-still=out]
+                 [--lights=dx,dy,radius,lamp:colour/frames,...;...]
 
 --key lists the background colours that become transparent where they touch
 the image edge.  --shadow paints a checkerboard black ellipse under the body:
@@ -269,8 +270,26 @@ def main():
             for i in idx:
                 anim += frames[i * 64:(i + 1) * 64]
         print(f"wheel animation: {nwf} frames over sprites {idx}, {len(anim)} bytes")
+    if not anim:
+        anim = bytes([0, 0])            # an explicit empty animation header so the sections after it are findable
+    # --- lights: "dx,dy,radius,lamp:colour/frames,colour/frames;..." per light
+    lights = b""
+    if "lights" in opts:
+        recs = []
+        for spec in opts["lights"].split(";"):
+            head, pat = spec.split(":")
+            dx, dy, radius, lamp = [int(v) for v in head.split(",")]
+            entries = [(int(c), int(f)) for c, f in (e.split("/") for e in pat.split(","))]
+            assert 1 <= len(entries) <= 4, "a light pattern has 1 to 4 entries"
+            rec = [dx & 255, dy & 255, radius, lamp, len(entries), 0]
+            for c, f in entries:
+                rec += [c, f]
+            rec += [0] * (16 - len(rec))
+            recs.append(bytes(rec))
+        lights = bytes([len(recs)]) + b"".join(recs)
+        print(f"lights: {len(recs)} light(s), {len(lights)} bytes")
     hdr = bytes([gw, gh, cw, ch, mc0, ind, mc1, floor])
-    blob = hdr + spans + sprites + bytes(bitmap) + bytes(screen) + bytes(colour) + anim
+    blob = hdr + spans + sprites + bytes(bitmap) + bytes(screen) + bytes(colour) + anim + lights
     with open(out, "wb") as f:
         f.write(blob)
     if "preview" in opts:

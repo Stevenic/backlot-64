@@ -28,7 +28,7 @@ The three budgets that are over or fragile, each fixed by an idea with a measure
 
 ## Showcase (built alongside)
 
-- **Baked lighting** (2026-09-17, `examples/showcase`, `make run-showcase`): dusk over a sunset still through 32 streamed colour maps, then the night street with the cruiser's strobe lighting only the surfaces near its lamp from 40 position maps, then a pixel-exact park. Every map lands as 1.6 KB of DMA in the blank; the bitmap never changes. The first of the capability pieces from the precomputation list: video, scaled sprites, flow fields, rewind and voice follow the same pattern.
+- **Baked lighting** (2026-09-17, `examples/showcase`, `make run-showcase`): dusk over a sunset still through 32 streamed colour maps, then the night street with the cruiser's own light bar, declared in its object file, lighting only the surfaces near each lamp from 80 position maps the engine picks itself, then a pixel-exact park. Every map lands as 1.6 KB of DMA in the blank; the bitmap never changes. The first of the capability pieces from the precomputation list: video, scaled sprites, flow fields, rewind and voice follow the same pattern.
 
 ## Phase 3: A world
 

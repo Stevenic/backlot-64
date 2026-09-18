@@ -58,14 +58,15 @@ $(BUILD)/cruiser.bblock: images/cruiser-side.png tools/b64quant.py | $(BUILD)
 # the cruiser as an object: sprite grid + block cut from one master, block composited
 # over the night set at its parking cell so the park is seamless
 $(BUILD)/cruiser.b64o: images/cruiser-side.png $(BUILD)/night.still tools/b64object.py tools/b64quant.py | $(BUILD)
-	$(PY) tools/b64object.py images/cruiser-side.png $@ 4 2 --colours=black,white,blue --key=black,dgray --shadow --wheels=auto --still=$(BUILD)/night.still --at=27,14 --preview=$(BUILD)/formats/cruiser-object.png --patch-still=$(BUILD)/night-parked.still
+	$(PY) tools/b64object.py images/cruiser-side.png $@ 4 2 --colours=black,white,blue --key=black,dgray --shadow --wheels=auto --still=$(BUILD)/night.still --at=27,14 --preview=$(BUILD)/formats/cruiser-object.png --patch-still=$(BUILD)/night-parked.still "--lights=40,-6,11,1:2/8,0/8;52,-6,11,1:0/8,6/8"
 
 # the set with the parking cells pre-reduced is what the scene loads
 $(BUILD)/night-parked.still: $(BUILD)/cruiser.b64o
 
-# a single hires lamp sprite for the beacon overlays: a 6x3 blob
+# the lamp sprite an object's lights are drawn with: one hires 8x4 bar at
+# rows 4..7, so a light declared at dy=-6 sits on the roof (VIC y-2..y+1)
 $(BUILD)/lamp.spr: | $(BUILD)
-	$(PY) -c "rows=[0]*21; rows[9]=0b01111110; rows[10]=0b01111110; open('$@','wb').write(bytes(sum(([r,0,0] for r in rows),[])+[0]))"
+	$(PY) -c "rows=[0]*21; rows[4:8]=[0xff]*4; open('$@','wb').write(bytes(sum(([r,0,0] for r in rows),[])+[0]))"
 
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
@@ -79,14 +80,14 @@ $(BUILD)/scene.bin: examples/cutscene/scene.s include/b64.inc $(BUILD)/slots.inc
 	$(LD) -C script.cfg -o $@ $(BUILD)/scene.o -Ln $(BUILD)/scene.lbl
 
 # the lighting showcase: a day set, its dusk states, strobe states for the night set, and its script
-$(BUILD)/day.still: images/day-still.png tools/b64quant.py | $(BUILD)
-	$(PY) tools/b64quant.py still images/day-still.png $(BUILD)/formats/day-still.png --bin=$@
+$(BUILD)/day.still: images/day-set.png tools/b64quant.py | $(BUILD)
+	$(PY) tools/b64quant.py still images/day-set.png $(BUILD)/formats/day-set.png --bin=$@
 
 $(BUILD)/daylight.bin: $(BUILD)/day.still tools/b64light.py
 	$(PY) tools/b64light.py $(BUILD)/day.still $@ dusk --steps 32
 
-$(BUILD)/nightlight.bin: $(BUILD)/night-parked.still tools/b64light.py
-	$(PY) tools/b64light.py $(BUILD)/night-parked.still $@ beacon --positions 20 --row 13 --radius 11
+$(BUILD)/nightlight.bin: $(BUILD)/night-parked.still $(BUILD)/cruiser.b64o tools/b64light.py
+	$(PY) tools/b64light.py $(BUILD)/night-parked.still $@ object $(BUILD)/cruiser.b64o --x0 24 --xstep 8 --npos 40 --y 162
 
 $(BUILD)/show.bin: examples/showcase/scene.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
 	$(AS) -g -t c64 -I include -I $(BUILD) -o $(BUILD)/show.o $<
@@ -96,7 +97,7 @@ $(BUILD)/showcase.o: examples/showcase/main.s include/b64.inc $(BUILD)/slots.inc
 	$(AS) -t c64 $(INC) -o $@ $<
 
 $(BUILD)/showcase.prg: $(ENGINE_OBJS) $(BUILD)/showcase.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/showcase.o -m $(BUILD)/showcase.map
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/showcase.o -m $(BUILD)/showcase.map -Ln $(BUILD)/showcase.lbl
 
 run-showcase: $(BUILD)/showcase.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/showcase.prg
@@ -128,7 +129,7 @@ assets: $(REU)
 # ---------------------------------------------------------------------------
 # engine
 $(BUILD)/%.o: src/%.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
-	$(AS) -t c64 $(INC) -o $@ $<
+	$(AS) -g -t c64 $(INC) -o $@ $<
 
 $(PBUILD):
 	mkdir -p $(PBUILD)
@@ -164,7 +165,7 @@ $(BUILD)/cutscene.o: examples/cutscene/main.s include/b64.inc $(BUILD)/slots.inc
 	$(AS) -t c64 $(INC) -o $@ $<
 
 $(BUILD)/cutscene.prg: $(ENGINE_OBJS) $(BUILD)/cutscene.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/cutscene.o -m $(BUILD)/cutscene.map
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/cutscene.o -m $(BUILD)/cutscene.map -Ln $(BUILD)/cutscene.lbl
 
 $(BUILD)/bench.o: examples/bench/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
 	$(AS) -t c64 -I include -I $(BUILD) -o $@ $<

@@ -45,7 +45,8 @@ B64_UCI_STATDATA = $DF1F
 
 ; overlay windows (see src/b64_overlay.s)
 B64_OVERLAY_A   = $8000         ; region A, 8 KB
-B64_OVERLAY_B   = $C900         ; region B, 1.75 KB
+B64_VM_TABLE    = $C900         ; the VM's page-aligned vector table (copied from RODATA at script start)
+B64_OVERLAY_B   = $CA00         ; region B, 1.5 KB
 
 ; b64_plat bits
 B64_PLAT_REU    = $01           ; an REU answers
@@ -156,7 +157,8 @@ VM_OP_OBJANIM   = 86           ; v: the object's animation frame
 VM_OP_SPRITE    = 88           ; slot, vx, vy, colour, slot24: submit one sprite
 VM_OP_PCM       = 90           ; ch, slot24, len24, rate16, vol, pan: play a sample (Ultimate Audio; no-op elsewhere)
 VM_OP_LIGHT     = 92           ; slot24, v: apply lighting state v (2 KB each) of the file at slot at the next base-phase blank
-VM_OP_COUNT     = 47            ; opcodes are stored doubled: byte = 2 * index into a page-aligned table
+VM_OP_LIGHTS    = 94           ; lightfile24, lamp24, n: n = 1 the engine lights the set from the object's own lights each frame it is drawn; 0 off
+VM_OP_COUNT     = 48            ; opcodes are stored doubled: byte = 2 * index into a page-aligned table
 ; (the constants above are the doubled bytes); script macros: one line per instruction
 .macro V_END
         .byte VM_OP_END
@@ -299,6 +301,9 @@ VM_OP_COUNT     = 47            ; opcodes are stored doubled: byte = 2 * index i
 .macro V_LIGHT s, v
         .byte VM_OP_LIGHT, <(s), >(s), ^(s), v
 .endmacro
+.macro V_LIGHTS f, lamp, n
+        .byte VM_OP_LIGHTS, <(f), >(f), ^(f), <(lamp), >(lamp), ^(lamp), n
+.endmacro
 
 ; ---------------------------------------------------------------------------
 ; Zero page, engine-owned $02-$53
@@ -417,6 +422,7 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global b64_obj_park            ; A = cell x, X = cell y: blit the object's block at the next vblank
 .global b64_obj_unpark          ; A = cell x, X = cell y: restore the still there at the next vblank
 .global b64_cut_light           ; b64_reu = a 2 KB lighting state (tools/b64light.py): applied at the next base-phase blank
+.global b64_obj_lights          ; b64_reu = baked lighting file, b64_val = lamp frame, A = 1/0: light the set from the object's lights
 .global b64_vm_start            ; b64_reu = script base in the REU, A/X = entry offset: kill all threads, run it as thread 0
 .global b64_vm_tick             ; once per frame from the game callback: run every ready thread
 .global b64_page_get            ; A/X = REU page number lo/hi -> A = high byte of its 256-byte copy in RAM

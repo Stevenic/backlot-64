@@ -16,7 +16,7 @@ slot    OVL2      $50B000  build/ovl2.bin
 slot    DAYSET    $50D000  build/day.still     ; the showcase: day set, its 32 dusk states, the strobe states, the script
 slot    DAYLIGHT  $510000  build/daylight.bin
 slot    NIGHTLIGHT $520000 build/nightlight.bin
-slot    SHOW      $540000  build/show.bin
+slot    SHOW      $560000  build/show.bin
 slot    HEAP8     $600000  -        ; game heap on an 8 MB REU (see B64_HEAP8)
 slot    SCRATCH   $7F0000  -
 slot    HEAP16    $800000  -        ; game heap on a 16 MB REU: only when b64_plat has REU16
