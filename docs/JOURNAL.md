@@ -133,6 +133,8 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 
 **What went wrong on the way,** all caught by measurement: the routine table lost a carry for sprites 4 to 7, so their entries ran sprite 0's routine and cut others short; the harness's own soak loop made the engine skip every other frame; the benchmark reset forced the routines to be regenerated on every script tick; an empty list stored the accumulator's leftover as its length. The profiler had been lying too: its sampler wrote two zero-page bytes from its interrupt without saving them, which is why the scroller's profile build ran one frame in four.
 
+**A step not taken.** The roadmap's page table for the script cache was measured before it was built: about two lookups a frame, nearly all answered by the fast path. It would have saved about 40 cycles a frame for 256 bytes. It stays on the roadmap as deferred, with the number.
+
 ---
 
 ## What went wrong, and what caught it
