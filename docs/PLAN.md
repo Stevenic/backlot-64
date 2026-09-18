@@ -176,6 +176,8 @@ The data engine is the layer that makes the REU behave like the program's memory
 
 ## 4. Modules and the feature picker
 
+> **Revised 2026-09-17.** Residency is no longer decided at build time. Modules keep their headers, tiers and measured costs, but the VM pins and caches them at run time from a plan the script compiler emits; see `docs/MODULES.md`, which supersedes the "resident or overlay" kind below and the hand-written manifest in 4.4. The catalogue, the budget arithmetic, hooks versus syscalls, upgrade points and bespoke modules stand.
+
 The engine core is fixed. Everything a game needs beyond drawing is a module: a self-contained unit of assembly with a header that declares what it costs. A game picks the modules it wants in a manifest, and the build refuses any combination that does not fit the machine. That is the feature picker: not a menu of free options, but a budget you spend.
 
 ### 4.1 Why modules

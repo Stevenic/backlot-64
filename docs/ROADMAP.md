@@ -32,16 +32,17 @@ The pieces a game loop needs, in the order the paging plan lays them out.
 
 11. **Sector ring.** 256-byte sector records, a 3x3 ring around the camera, prefetch by heading, header-first fetch so empty sectors cost one small DMA. *Header-first after DOOM C64U.*
 12. **Split tileset swap.** A region's 12 KB tileset arrives 1 KB a frame into a second library, switched under the core-only band.
-13. **Entities.** The entity table in hot RAM, spawn and write-back through the sector ring, sprite frames pre-streamed when a sector loads.
-14. **VM events.** Freeze and override for cutscenes, event waits, entity-bound threads spawned from a per-entity event table, bitvars, per-thread locals once contexts page to the REU. *After SCUMM v0.*
-15. **Music.** A SID register stream: the tune's player runs at build time, register writes are delta-encoded into the REU, and playback is a small IRQ. Ultimate Audio for samples on tier 3; a stock-hardware sample path later. *After DOOM C64U.*
-16. **Screens as packages.** The overlay loader is done (2026-09-17, `examples/overlay`, verified at both tiers); next is one REU slot per screen with its code, screen data and text, and window-and-lookahead lists inside them.
-17. **Save and load.** Hot state stashed as a block, sector records written back, the 64 KB region as the save.
+13. **Modules as overlays.** The VM becomes the overlay manager (`docs/MODULES.md`): a four-slot code cache with pins in region A, modules with jump tables linked once per slot, SYS and NEED opcodes, a wait-on-module thread state, and the residency plan the script compiler emits. The vehicle module is the first pinned module and the pathfinder the first cached one.
+14. **Entities.** The entity table in hot RAM, spawn and write-back through the sector ring, sprite frames pre-streamed when a sector loads.
+15. **VM events.** Freeze and override for cutscenes, event waits, entity-bound threads spawned from a per-entity event table, bitvars, per-thread locals once contexts page to the REU. *After SCUMM v0.*
+16. **Music.** A SID register stream: the tune's player runs at build time, register writes are delta-encoded into the REU, and playback is a small IRQ. Ultimate Audio for samples on tier 3; a stock-hardware sample path later. *After DOOM C64U.*
+17. **Screens as packages.** The overlay loader is done (2026-09-17, `examples/overlay`, verified at both tiers); next is one REU slot per screen with its code, screen data and text, and window-and-lookahead lists inside them.
+18. **Save and load.** Hot state stashed as a block, sector records written back, the 64 KB region as the save.
 
 ## Phase 4: Ship
 
-18. **Release.** A tagged build with the REU image, the examples, the benchmark numbers in the readme, and a page that shows the scene running on hardware.
-19. **The game.** Its own repository on this engine, with its own name and hand-drawn art.
+19. **Release.** A tagged build with the REU image, the examples, the benchmark numbers in the readme, and a page that shows the scene running on hardware.
+20. **The game.** Its own repository on this engine, with its own name and hand-drawn art.
 
 ## Not planned
 
