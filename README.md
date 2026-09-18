@@ -32,7 +32,7 @@ make shot-scroll    # headless autodrive screenshots in build/
 
 ## Status
 
-E0 core, E0.5 data engine (first cut), E1 scroller, E3 sprite multiplexer, the E4 HUD split, and E12 cutscenes are running. `make run-cutscene` plays a scene written as p-code for the engine's VM (`src/b64_vm.s`), read from the REU through the page cache so none of it is resident: a bitmap set from generated art, a sprite-grid actor, a blitted prop, and a text band. The scroller streams a 2048x2048 metatile world from the REU with DMA screen shifts and measures its own frame cost on screen. Worst case is about 9,200 cycles against a 6,000 target; the fills are the next optimisation. See the milestone table in the plan, and [docs/ART.md](docs/ART.md) for how to draw tiles.
+E0 core, E0.5 data engine (first cut), E1 scroller, E3 sprite multiplexer, the E4 HUD split, and E12 cutscenes are running. `make run-overlay` loads two 8 KB code overlays from the REU into the same window and runs each, the proof of the data engine's code paging. `make run-cutscene` plays a scene written as p-code for the engine's VM (`src/b64_vm.s`), read from the REU through the page cache so none of it is resident: a bitmap set from generated art, a sprite-grid actor, a blitted prop, and a text band. The scroller streams a 2048x2048 metatile world from the REU with DMA screen shifts and measures its own frame cost on screen. Worst case is about 9,200 cycles against a 6,000 target; the fills are the next optimisation. See the milestone table in the plan, and [docs/ART.md](docs/ART.md) for how to draw tiles.
 
 ## License
 

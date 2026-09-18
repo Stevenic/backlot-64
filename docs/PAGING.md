@@ -83,6 +83,8 @@ The playfield scroller (E1) is this strategy with metatiles: the screen matrix s
 
 **Cost:** 8.4 ms to open, zero per frame, zero resident when closed.
 
+**Built (loader):** `b64_overlay_load` and `tools/b64overlay.py`; `examples/overlay` is the proof. Measured 9,013 cycles for an 8 KB load into region A. The packaging of screen data and text with the code is the part still open.
+
 ### 2.7 Stash and restore
 
 **For:** a mode that borrows RAM the game is using: the cutscene bitmap at $6000.

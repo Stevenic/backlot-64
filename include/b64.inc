@@ -43,6 +43,10 @@ B64_UCI_ID      = $DF1D
 B64_UCI_RESPDATA = $DF1E
 B64_UCI_STATDATA = $DF1F
 
+; overlay windows (see src/b64_overlay.s)
+B64_OVERLAY_A   = $8000         ; region A, 8 KB
+B64_OVERLAY_B   = $C900         ; region B, 1.75 KB
+
 ; b64_plat bits
 B64_PLAT_REU    = $01           ; an REU answers
 B64_PLAT_REU16  = $02           ; and it is 16 MB
@@ -412,6 +416,8 @@ B64_SPR_SLOTS     = 25          ; slot 0 pinned + 24 multiplexed; 64 bytes each 
 .global b64_vm_tick             ; once per frame from the game callback: run every ready thread
 .global b64_page_get            ; A/X = REU page number lo/hi -> A = high byte of its 256-byte copy in RAM
 .global b64_page_flush          ; forget every cached page
+.global b64_overlay_load        ; b64_reu = slot, b64_len = length: DMA an overlay into region A unless resident; C = 1 if fetched
+.global b64_overlay_reset       ; forget what is resident
 .global b64_plat_probe          ; called by b64_init: fills b64_plat, b64_reu_mb, sizes the VM budget and the heap
 .global b64_plat                ; B64_PLAT_* bits
 .global b64_reu_mb              ; 0, 8 or 16

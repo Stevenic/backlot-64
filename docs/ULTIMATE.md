@@ -31,6 +31,7 @@ Measured in VICE on 2026-09-17: tier 0 with `make bench REUSIZE=8192` reports `r
 - **DMA does not speed up.** REU transfers stay bus-bound, so the paging numbers in `MEMORY.md` hold on every tier.
 - **The 16 MB image is the build.** `reu.manifest` declares 16384; the stock tier runs the first 8 MB of the same image (`build/world8.reu`). Every packed asset lives below 8 MB; the upper half is the tier 1 heap.
 - **Sound is optional data.** The PCM opcode plays a sample on tier 3 and does nothing elsewhere, so a script can ask for a sound on any machine. Samples are 8-bit PCM packed as slots.
+- **Code overlays are the same DMA on every tier.** The 6502 cannot run code from the REU on any machine; an overlay is 8 KB fetched into RAM and jumped to, which is what `b64_overlay_load` does and what `examples/overlay` verifies at tiers 0 and 1. The C64 Ultimate's REU presents the same 1750 register interface and its DMA lands in the same RAM (DOOM C64U streams its level data into RAM this way every frame), so nothing about tier 2 changes the mechanism; it is unverified there only because the hardware has not arrived.
 - **Files are the hardware's job.** On VICE the image is complete before the program starts. On the Ultimate, `b64_uci_load` fills a slot from storage; the heap allocator (`b64_heap_alloc`) gives it somewhere to land.
 
 ## What is not covered

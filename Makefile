@@ -7,7 +7,7 @@ BUILD   = build
 CFG     = b64.cfg
 INC     = -I include -I $(BUILD)
 
-ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_text.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s src/b64_pcm.s src/b64_uci.s
+ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_text.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s src/b64_pcm.s src/b64_uci.s src/b64_overlay.s
 ENGINE_OBJS = $(patsubst src/%.s,$(BUILD)/%.o,$(ENGINE_SRCS))
 
 REU     = $(BUILD)/world.reu
@@ -25,7 +25,7 @@ VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 .PHONY: all assets run-scroll shot-scroll palette clean
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -67,7 +67,7 @@ $(BUILD)/lamp.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/vice_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/vice_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -78,6 +78,21 @@ $(BUILD)/scene.bin: examples/cutscene/scene.s include/b64.inc $(BUILD)/slots.inc
 $(BUILD)/benchscripts.bin: examples/bench/scripts.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
 	$(AS) -t c64 -I include -I $(BUILD) -o $(BUILD)/benchscripts.o $<
 	$(LD) -C script.cfg -o $@ $(BUILD)/benchscripts.o
+
+# code overlays: assembled for the window, linked against the resident
+# program's map so they can call engine routines, packed as slots
+$(BUILD)/overlay.o: examples/overlay/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -t c64 $(INC) -o $@ $<
+
+$(BUILD)/overlay.prg: $(ENGINE_OBJS) $(BUILD)/overlay.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/overlay.o -m $(BUILD)/overlay.map -Ln $(BUILD)/overlay.lbl
+
+$(BUILD)/ovl%.bin: examples/overlay/ovl%.s $(BUILD)/overlay.prg overlay.cfg tools/b64overlay.py | $(BUILD)
+	$(AS) -t c64 $(INC) -o $(BUILD)/ovl$*.o $<
+	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl overlay.cfg $(BUILD)/ovl$*.o $@
+
+run-overlay: $(BUILD)/overlay.prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/overlay.prg
 
 $(REU8): $(REU)
 	head -c 8388608 $(REU) > $@

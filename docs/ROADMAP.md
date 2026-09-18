@@ -35,7 +35,7 @@ The pieces a game loop needs, in the order the paging plan lays them out.
 13. **Entities.** The entity table in hot RAM, spawn and write-back through the sector ring, sprite frames pre-streamed when a sector loads.
 14. **VM events.** Freeze and override for cutscenes, event waits, entity-bound threads spawned from a per-entity event table, bitvars, per-thread locals once contexts page to the REU. *After SCUMM v0.*
 15. **Music.** A SID register stream: the tune's player runs at build time, register writes are delta-encoded into the REU, and playback is a small IRQ. Ultimate Audio for samples on tier 3; a stock-hardware sample path later. *After DOOM C64U.*
-16. **Screens as packages.** The overlay loader, one REU slot per screen with its code, screen data and text; window-and-lookahead lists inside them.
+16. **Screens as packages.** The overlay loader is done (2026-09-17, `examples/overlay`, verified at both tiers); next is one REU slot per screen with its code, screen data and text, and window-and-lookahead lists inside them.
 17. **Save and load.** Hot state stashed as a block, sector records written back, the 64 KB region as the save.
 
 ## Phase 4: Ship
