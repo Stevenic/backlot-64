@@ -7,6 +7,7 @@ Read these before working here:
 - `docs/PLAN.md` — what the engine is, its budgets, memory map, API, milestones.
 - `docs/MEMORY.md` — the memory strategy: what is resident, what is paged and by whom, DMA times, game state in chunks.
 - `docs/PAGING.md` — the catalogue of paging strategies, what each costs, which data gets which, and what cannot or should not be paged.
+- `docs/PRIOR-ART.md` — what other C64 engines do that this one should borrow, ranked, with credit; check it before redesigning the fills, the multiplexer or the VM dispatch.
 - `docs/ULTIMATE.md` — the platform tiers from a stock C64 to the C64 Ultimate: what the boot probe finds, the turbo, sampler and command-interface registers, and what has run only on paper.
 - `docs/PREPARE.md` — how to prepare every kind of data the engine consumes: sets, objects, portraits, tilesets, worlds, the REU image. Follow it literally; it is the contract.
 - `docs/ART.md` — the colour rules and how to draw for the chip.
