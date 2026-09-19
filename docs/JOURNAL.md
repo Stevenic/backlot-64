@@ -285,6 +285,29 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 
 **What it showed.** A module links against the engine's labels, so it is tied to one build of the engine. The profiling build places its routines elsewhere, and needs its own link of the same module in its own REU slot. The fix, a fixed table of engine entries that modules call through, comes with the module system's interface versions. Three engine internals the cutscene reached are now declared engine globals, which makes them part of what a module may rely on.
 
+### 19 September: the module manager, SYS by address, and the game's opcodes
+
+**The asks.** "do step 2": the module manager that tracks what each loaded module requires and never unloads one still needed, with a load strategy per machine and every module callable from p-code. While it was being built, two more: "the compiler should be able to generate an optimized span of code and just jump to it by memory location", and "reserve 48 of the 128 opcodes for game specific operations. this gives the engine additional space but also lets games create custom modules or the compiler create optimized assembly routines."
+
+**What was decided.** Steven decided the opcode split: 0-79 the engine's, 80-127 the game's. SYS was redesigned from the 17 September plan (a module and an entry) to an interface and an address. The address is what a compiler knows. The interface lets the VM make sure the code is resident, and lets any provider answer: every physics module has the same base and jump table, so `SYS IF_PHYS, PHYS_STEP` steps whichever is in. A game opcode whose module is away points at a loader, so the first use brings the module in and dispatch stays 17 cycles. The load strategy differs in time, not space: a stock machine queues a load for the main loop and runs the opcode again next frame; a machine with the turbo loads inside the opcode.
+
+**What was built.** An entry table at $2F00, the same in every build, so a module is linked once: the profiling build's separate copy of the cutscene module is gone. The packer's module table, with requirements, versions, default providers, swap entries and the game opcodes' `op` lines. The manager, about 600 bytes: requirements first, eviction only of modules nothing requires and nothing pins, a provider replaced by another handing over its dependents, a refusal that evicts nothing and says why at a fixed address. Four engine opcodes (SYS, NEED, LDB, STB) and the game range. The demo, `examples/modules`, is a game written entirely in p-code. Its resident code only starts the script. The script loads physics, collision and AI through SYS and NEED, gives six people brains with STB, and draws them with two game opcodes whose handlers are in the game's own module.
+
+**What was measured.** The loads in the order the requirements demand, both refusals with the right reasons, the dependents counted right, the swap byte for byte, and the same with the turbo bit forced on in VICE, where the setup finishes on frame 4 instead of 7. A swap of the physics module costs 19,497 cycles, the fetch and the resume. The resident engine grew from 7,498 bytes to 8,797 and low RAM from 608 to 1,044, most of the room the cutscene's move made.
+
+**What went wrong.**
+- The game's module would not link: the overlay tool read only the first name of a `.global` line that lists several. It reads lists now.
+- The check's static pass would have crashed: the packer's manifest reader returns more than it did, and two callers unpacked three values.
+- A module swapped out kept its count of dependents. Reading the manager's state in VICE showed it; eviction now clears it.
+- The three boot-failure checks stopped halting where they should. A module's label file maps every engine routine to the new entry table, and the test driver let those override the program's own labels, so the breakpoint sat on a trampoline that nothing executes. The engine was right; the driver now keeps the first file's label.
+- The swap check failed on a correct swap. The physics module writes its own state inside its range once it runs, so the check now compares the bytes when its swap entry is called, as the boats check does.
+
+### 19 September, later: the rotor turns
+
+**The ask.** "a helicopters blades should always rotate". The rotor was a fixed cross in the design that every heading was sampled from, so it turned with the craft and never by itself.
+
+**What was built.** A shape may now take a blade angle, and the tool samples every phase of every heading: the helicopter and its shadow are 16 headings by 4 phases, 4 KB each in the REU. The drawing takes the phase from the frame counter, one every two frames, and the frame number works out as heading times four plus the phase, which the existing multiply by 64 already handles. Nothing costs more per frame. The tail rotor thins and fills with the same phase.
+
 ---
 
 ## What went wrong, and what caught it
@@ -338,6 +361,9 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | A line of sight cost more than a frame | A profile of single AI ticks | A walk over metatiles, not a 4-pixel path |
 | A check found a body inside a wall that was not | The body's cache matched the map | Scene checks read bodies only between ticks |
 | A pedestrian stuck on a building's corner | A trace of the fleeing | Whiskers probe the width of the box |
+| A module failed to link against an engine global | The linker's unresolved symbol | The overlay tool read one name per `.global` line; it reads lists |
+| An evicted module kept its count of dependents | Reading the manager's state in VICE | Eviction clears it |
+| The three boot-failure checks stopped stopping | `make check`, on the whole suite | A module's labels map the engine's names to the new entry table; they were overriding the program's own, so the breakpoint sat on a trampoline the engine never executes. The first label file to name a symbol now keeps it |
 
 ---
 

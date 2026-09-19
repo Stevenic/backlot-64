@@ -34,6 +34,8 @@
 .export b64_vm_tick
 .export vm_budget_max
 .export vm_cur
+.export b64_vm_ops, b64_vm_op_set
+.export vm_wrap, vm_next, vm_back, vm_yield
 
 VM_THREADS      = 8
 VM_VARS         = 32
@@ -48,9 +50,9 @@ VM_T            = 32            ; hidden variable: the immediate of every xxxI o
 :
 .endmacro
 
+.import vm_lo, vm_hi              ; at a fixed address (src/b64_api.s), for game opcodes' handlers
+
 .segment "LOWRAM"
-vm_lo:          .res VM_VARS+1
-vm_hi:          .res VM_VARS+1
 th_on:          .res VM_THREADS
 th_pclo:        .res VM_THREADS
 th_pchi:        .res VM_THREADS
@@ -63,6 +65,17 @@ vm_budget:      .res 1
 vm_budget_max:  .res 1
 vm_x:           .res 1
 vm_line:        .res 41         ; TEXT copies its string here
+sys_if:         .res 1          ; SYS: its operands, the registers after the call,
+sys_vec:        .res 2          ; and the opcode's own offset, to run it again
+sys_va:         .res 1
+sys_vx:         .res 1
+sys_vy:         .res 1
+sys_vc:         .res 1
+sys_a:          .res 1
+sys_x:          .res 1
+sys_y:          .res 1
+sys_pc:         .res 1
+sys_pch:        .res 1
 
 .segment "CODE"
 
@@ -72,13 +85,16 @@ b64_vm_start:
         sta th_pclo
         stx th_pchi
         ; the vector table must sit on a page boundary; the linker cannot
-        ; align it inside the padded core without wasting the gap, so it is
-        ; copied to its page here (256 bytes, once per script start)
+        ; align it inside the padded core without wasting the gap, so the
+        ; engine's half is copied to its page here (once per script start),
+        ; and the game's half pointed where its handlers are
         ldx #0
 :       lda vm_optab,x
         sta B64_VM_TABLE,x
         inx
+        cpx #VM_OP_GAME
         bne :-
+        jsr b64_vm_ops
 .ifdef VM_TRACE
         lda #0
         sta $E0FF
@@ -176,6 +192,7 @@ vm_yield:
         rts
 
 ; back: an op saved Y in vm_pc and called into the engine
+vm_back:
 back:   ldy vm_pc
         jmp vm_next
 
@@ -798,8 +815,285 @@ spr_xy:
         rts
 
 ; ---------------------------------------------------------------------------
-; the vector table: 128 words, copied to the page at B64_VM_TABLE, indexed
-; by the doubled opcode byte; unused entries are END
+; modules (docs/MODULES.md section 9).  Native code is called by its
+; address; the interface byte names whose code it is, so the module
+; providing it is made resident first.  How depends on the machine: a
+; stock one queues the load for the main loop after this frame's callback
+; (one load a frame, b64_mod_service) and runs the opcode again next frame;
+; one with the turbo loads at once and runs on (UNTESTED on the hardware:
+; VICE has no turbo).  Game opcodes whose handler's module is away point at
+; op_summon, which does the same.
+
+; SYS if, addr, va, vx, vy, vc
+op_sys:
+        jsr mark
+        FETCH
+        sta sys_if
+        FETCH
+        sta sys_vec
+        FETCH
+        sta sys_vec+1
+        FETCH
+        sta sys_va
+        FETCH
+        sta sys_vx
+        FETCH
+        sta sys_vy
+        FETCH
+        sta sys_vc
+        sty vm_pc
+        lda sys_if
+        beq @call               ; the engine or the game's resident code: always there
+        ldx cut_active          ; a scene has the display: no module is where it was
+        bne @cant
+        jsr summon_if
+        cmp #1
+        beq @wait
+        bcs @cant
+@call:  ldx sys_vy              ; the registers from the variables
+        jsr getv
+        pha
+        ldx sys_vx
+        jsr getv
+        pha
+        ldx sys_va
+        jsr getv
+        sta sys_a
+        pla
+        tax
+        pla
+        tay
+        lda sys_a
+        jsr sys_go
+        php
+        sta sys_a               ; and back into them
+        stx sys_x
+        sty sys_y
+        ldx sys_va
+        lda sys_a
+        jsr putv
+        ldx sys_vx
+        lda sys_x
+        jsr putv
+        ldx sys_vy
+        lda sys_y
+        jsr putv
+        pla
+        and #1                  ; the carry
+        ldx sys_vc
+        jsr putv
+        ldy vm_pc
+        jsr vm_repage           ; the call may have replaced our page
+        jmp vm_next
+@wait:  jmp rewind
+@cant:  lda #255
+        ldx sys_vc
+        jsr putv
+        jmp back
+sys_go: jmp (sys_vec)
+; getv: X = a variable or VM_NONE -> A = its low byte, or 0
+getv:   cpx #VM_NONE
+        beq :+
+        lda vm_lo,x
+        rts
+:       lda #0
+        rts
+; putv: A -> the variable X, unless it is VM_NONE
+putv:   cpx #VM_NONE
+        beq :+
+        jmp set_byte
+:       rts
+
+; NEED module, v
+op_need:
+        jsr mark
+        FETCH
+        sta sys_if
+        FETCH
+        sta sys_vc
+        sty vm_pc
+        lda cut_active
+        bne @no
+        lda sys_if
+        jsr summon
+        cmp #1
+        beq @wait
+        bcs @no
+        lda #1
+        bne @set
+@no:    lda #0
+@set:   ldx sys_vc
+        jsr putv
+        jmp back
+@wait:  jmp rewind
+
+; a game opcode whose handler's module is away: bring it, then run the
+; opcode (at once when the load was, next frame when it was queued; a
+; refused load is tried again every frame until it is not)
+op_summon:
+        jsr mark
+        lda vm_jmp+1            ; the opcode that brought us here
+        sec
+        sbc #VM_OP_GAME
+        lsr a
+        tax
+        lda gop_if,x
+        jsr summon_if
+        cmp #0
+        bne rewind
+        lda sys_pc              ; resident now: run it
+        sta vm_pc
+        lda sys_pch
+        sta vm_pch
+        jsr vm_resolve
+        ldy vm_pc
+        jmp vm_next
+
+; summon_if: A = interface -> A = 0 its provider is resident (now), 1 queued,
+; 2 refused (or nothing provides it)
+summon_if:
+        pha
+        jsr b64_mod_find
+        pla
+        bcs sm_here
+        jsr b64_mod_default
+        bcc sm_no
+        txa
+; summon: A = module -> the same
+summon:
+        tax
+        lda mod_state,x
+        bmi sm_here
+        cpx mod_fail            ; refused at the last service: say so, once
+        beq sm_refused
+        lda b64_plat
+        and #B64_PLAT_TURBO
+        beq sm_queue
+        txa                     ; UNTESTED: the turbo's machines load at once
+        jsr b64_mod_need
+        bcs sm_here
+sm_no:  lda #2
+        rts
+sm_refused:
+        lda #0
+        sta mod_fail
+        lda #2
+        rts
+sm_queue:
+        txa
+        jsr b64_mod_queue
+        lda #1
+        rts
+sm_here:
+        lda #0
+        rts
+
+; mark: Y one past the opcode -> sys_pc/sys_pch = the opcode's offset
+mark:   tya
+        sec
+        sbc #1
+        sta sys_pc
+        lda vm_pch
+        sbc #0
+        sta sys_pch
+        rts
+; rewind: end the op to run it again next frame (a yield)
+rewind: lda sys_pc
+        sta vm_pc
+        lda sys_pch
+        sta vm_pch
+        rts
+
+; LDB v, addr, w: v = the byte at addr + w
+op_ldb:
+        jsr addr_w
+        lda (b64_ptr),y
+        ldx vm_x
+        jsr set_byte
+        jmp back
+; STB v, addr, w: the byte at addr + w = v
+op_stb:
+        jsr addr_w
+        ldx vm_x
+        lda vm_lo,x
+        sta (b64_ptr),y
+        jmp back
+; addr_w: operands v, addr, w -> vm_x = v, b64_ptr + Y = addr + w; the
+; offset is saved
+addr_w: FETCH
+        sta vm_x
+        FETCH
+        sta b64_ptr
+        FETCH
+        sta b64_ptr+1
+        FETCH
+        sty vm_pc
+        ldy #0
+        cmp #VM_NONE
+        beq @done
+        tax
+        lda vm_hi,x
+        clc
+        adc b64_ptr+1
+        sta b64_ptr+1
+        ldy vm_lo,x
+@done:  rts
+
+; b64_vm_op_set: A = game opcode 80-127, X = the interface whose module
+; holds the handler (0: resident), b64_val = the handler
+b64_vm_op_set:
+        sec
+        sbc #VM_OP_ENGINE
+        tay
+        txa
+        sta gop_if,y
+        lda b64_val
+        sta gop_lo,y
+        lda b64_val+1
+        sta gop_hi,y
+        ; fall through
+; b64_vm_ops: each game opcode to its handler, when it is resident; to
+; op_summon when its module is away (every module is, while a scene has
+; the display); to END when nothing is installed
+b64_vm_ops:
+        ldx #VM_GAME_OPS-1
+@o:     txa
+        asl a
+        tay
+        lda gop_hi,x
+        beq @end
+        lda gop_if,x
+        beq @here
+        lda cut_active
+        bne @away
+        lda gop_if,x
+        and #15
+        stx b64_tmp
+        tax
+        lda mod_prov,x
+        ldx b64_tmp
+        cmp #0
+        beq @away
+@here:  lda gop_lo,x
+        sta B64_VM_TABLE+VM_OP_GAME,y
+        lda gop_hi,x
+        jmp @set
+@away:  lda #<op_summon
+        sta B64_VM_TABLE+VM_OP_GAME,y
+        lda #>op_summon
+        jmp @set
+@end:   lda #<op_end
+        sta B64_VM_TABLE+VM_OP_GAME,y
+        lda #>op_end
+@set:   sta B64_VM_TABLE+VM_OP_GAME+1,y
+        dex
+        bpl @o
+        rts
+
+; ---------------------------------------------------------------------------
+; the vector table: the engine's 80 words, copied to the page at
+; B64_VM_TABLE, indexed by the doubled opcode byte; unused entries are END.
+; The game's 48 follow them on that page, set by b64_vm_ops.
 .segment "RODATA"
 vm_optab:
         .word op_end, op_wait, op_yield, op_jmp, op_spawn, op_call, op_ret, op_loop
@@ -809,6 +1103,7 @@ vm_optab:
         .word op_ldt, op_frame, op_joy
         .word op_still, op_object, op_shimmer, op_text, op_cleartext, op_blit, op_restore
         .word op_park, op_unpark, op_objspr, op_objanim, op_sprite, op_pcm, op_light, op_lights
-.repeat 128-VM_OP_COUNT
+        .word op_sys, op_need, op_ldb, op_stb
+.repeat VM_OP_ENGINE-VM_OP_COUNT
         .word op_end
 .endrepeat

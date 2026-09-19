@@ -123,6 +123,23 @@ DEMOS = [
                 "ticks a second. The next cuts are in docs/AI.md.",
     },
     {
+        "key": "modules", "prg": "build/modules.prg", "skip": 0, "frames": 560, "every": 1,
+        "title": "A game in p-code, its modules loaded as needed",
+        "source": "examples/modules", "run": "make run-modules",
+        "text": "The game's resident code starts a script and nothing else. The script calls the physics, collision "
+                "and AI modules by address, naming the interface each provides, and the VM loads what is missing, "
+                "requirements first: the collision module before the AI that needs it. People wander under the AI, "
+                "drawn by a game opcode whose handler is in the game's own module, fetched the first time it runs. "
+                "The status row shows which module provides what: the physics module swaps for the water module "
+                "and back, and two loads that would evict something still needed are refused.",
+        "facts": ["loads in order: physics, collision, AI, the game's module, water, ground",
+                  "refused: a load over the collision module the AI requires, and one over a pinned module",
+                  "a physics swap: 19,497 cycles, the 6.5 KB fetch and the resume",
+                  "opcodes 80-127 are the game's: its modules and a compiler's spans"],
+        "check": "modules.load_order, modules.refs, modules.refusals, modules.swap, modules.turbo",
+        "note": "",
+    },
+    {
         "key": "marsh", "prg": "build/marsh-auto.prg", "skip": 20, "frames": 380, "every": 1,
         "title": "An airboat in the marsh",
         "source": "modules/physics", "run": "make run-marsh",

@@ -126,6 +126,7 @@ b64_init:
         jsr b64_page_flush
         jsr b64_boot_check      ; no REU, no image or the wrong image: halt with the reason in the border
         jsr b64_plat_probe
+        jsr b64_mod_init        ; the manifest's modules and game opcodes (none resident)
         PROBE_CALL probe_init
         lda #0
         sta cut_active
@@ -176,6 +177,7 @@ b64_run:
 
         jsr read_joystick
         jsr call_cb
+        jsr b64_mod_service     ; a module load the callback's scripts asked for: one a frame
         jsr b64_bench_begin
         jsr b64_scroll_prepare
         jsr b64_bench_end

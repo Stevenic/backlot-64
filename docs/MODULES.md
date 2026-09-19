@@ -56,6 +56,8 @@ Loads run from the main loop after the game callback, one slot per frame at most
 
 ## 4. Syscalls
 
+*As built (section 9), SYS names an interface and a native address, not a module and an entry: the address is what a compiler knows, and the interface is what lets any provider of it answer. The waiting below is as built.*
+
 A syscall in p-code names a module and an entry:
 
 ```
@@ -117,15 +119,49 @@ The compiler gets an optimizer that turns a hot region of p-code into native 650
 
 The cutscene's primitives were resident in every program, though nothing calls them during play. They are now a module (`modules/cut`, 3.5 KB with its state) that `b64_cut_begin` loads into region A for a scene, after stashing what the region held, and `b64_cut_end` removes by restoring it: the first engine code paged by the design above, by hand until the code cache exists. The resident engine went from 10,164 to 7,498 bytes and low RAM from 1,294 to 608, which is the room the module manager, `SYS`, `NEED` and dependency tracking need (asked for 2026-09-19: the VM must never unload a module another loaded module still needs, and every module must be callable from p-code).
 
-It showed the next thing to fix. A module links against the engine's labels, so it is tied to one build of the engine: the profiling build, whose routines sit elsewhere, needs its own link of the same module in its own REU slot (`CUTPROF`). The fix is a fixed table of engine entries that modules call through, so a module survives an engine change; it belongs with the interface versions that dependency tracking needs.
+It showed the next thing to fix. A module links against the engine's labels, so it is tied to one build of the engine: the profiling build, whose routines sit elsewhere, needed its own link of the same module in its own REU slot (`CUTPROF`). Fixed in section 9: modules call the engine through a table of entries at a fixed address, and `CUTPROF` is gone.
 
 ## 8. Order of work
 
 1. **Code cache.** Three slots, pins, stamps, LRU, loads from the main loop. `examples/overlay` grows to exercise eviction and pinning. Measured: load cost per slot, compare cost.
-2. **Module format and tool.** The jump table, the descriptor, one link per allowed slot, the packer's module table.
-3. **SYS and NEED opcodes.** The table jump, the wait-on-module state, the prefetch queue. A test script calls two modules alternately with and without NEED and the trace shows the difference.
+2. **Module format and tool.** The jump table, the descriptor, one link per allowed slot, the packer's module table. *Built 2026-09-19 without the per-slot links: section 9.*
+3. **SYS and NEED opcodes.** The table jump, the wait-on-module state, the prefetch queue. *Built 2026-09-19, with dependencies and game opcodes: section 9.*
 4. **The plan.** First as a hand-written table for the cutscene and the overlay example; then emitted by the script compiler with the pinned-set analysis and the budget report.
 5. **Spans.** The optimizer pass over the macro-assembly IR, reading the probe's JSON profile; the cutscene's drive body as the first span, measured against the interpreted body.
 6. **The first real modules.** The vehicle module for Priors-64 as the first pinned module, the pathfinder as the first cached one, and the numbers from both in the plan's catalogue.
 
 Each step is checked in VICE at both REU tiers before it is called done, with the frame trace on when timing is the question.
+
+---
+
+## 9. The module manager, SYS and game opcodes (2026-09-19)
+
+Asked for 2026-09-19: modules are loaded and unloaded at run time, so the VM must track what each needs and never unload one that a loaded module still requires; every module must be callable from p-code; one load strategy for a stock C64 and another for the machines with time to spare. Then, during the work: the compiler should be able to generate an optimized span of native code and have the script jump to it by address, and 48 of the 128 opcodes are reserved for the game, for its own modules and for the compiler's optimized routines. This section is what was built; sections 3 to 6 are the design it came from, and where they differ this one is current.
+
+**The engine's entry table.** A page at $2F00 (`src/b64_api.s`) holds a `jmp` to every engine routine a module may call, then the engine variables a module reads: the platform bits, the refusal reason and the VM's variables. It is at the same address in every build of the engine, so a module is linked once and runs with any of them; `tools/b64overlay.py` links a module's `jsr b64_fetch` to the table's entry. Append only: an entry's place is its address.
+
+**The module table.** A `module` line in `reu.manifest` names a module's slot, the address it is linked for and loads to, its size there, the interface it provides and its version, up to two interfaces it requires (at least those versions), the entry to call when it replaces another provider of its interface, and whether it is its interface's default provider. The packer numbers them (`MOD_*` and `IF_*` in `slots.inc`) and writes the table into the `MODTAB` slot; `b64_init` fetches it (400 bytes of low RAM, the game opcodes' table included). Providers of one interface must share a base address, so one is resident at a time.
+
+**The manager** (`src/b64_mod.s`, about 600 bytes). For each module: resident or not, how many resident modules require what it provides, how many pins hold it; for each interface, its resident provider. `b64_mod_need` loads a module's requirements first (the default provider of any interface nothing provides), then makes room: every resident module the new one would overlap must be evictable (no dependents, no pins) or a provider of the same interface at no newer a version, which the new one replaces: it takes over its dependents and its swap entry runs (the physics modules' resume). Otherwise the load is refused, nothing is evicted, and `B64_MOD_ERR` says what was in the way. Evicting a module takes a dependent from each module it required. A load during a cutscene is refused: the scene has region A and the $6000 bitmap.
+
+**How loads happen depends on the machine** (`b64_plat`). On a stock C64 a script that needs a module queues it and waits; the main loop loads one request a frame, after the game's callback (`b64_mod_service`), and the thread runs its opcode again the next frame. On a machine with the turbo, the load happens inside the opcode and the thread runs on: the same space, but the time to spare (UNTESTED on the hardware; the check forces the bit in VICE).
+
+**SYS, by address.**
+
+```
+SYS if, addr, va, vx, vy, vc    ; 8 bytes
+```
+
+Calls native code at `addr`, first making sure the module providing interface `if` is resident; interface 0 is the engine or the game's resident code, always there (`SYS 0, API_MOD_PIN, ...`). A, X and Y come from the variables `va`, `vx`, `vy` and go back into them; `vc` gets the carry, or 255 when the call could not be made (nothing provides the interface, the load was refused, or a scene has the display). `VM_NONE` ($FF) for a register not used. A module's entries are at fixed places in its jump table and every provider of an interface has the same base, so `SYS IF_PHYS, PHYS_STEP` steps whichever physics module is in. A compiler's span is called the same way: the address is where the compiler put it, the interface the module it put it in.
+
+**NEED module, v** makes a module resident, requirements first, and waits for it: `v` is 1, or 0 when refused. **LDB v, addr, w** and **STB v, addr, w** read and write a byte at a C64 address plus a variable, for a module's tables (a body's place, a brain's team) and the engine's variables.
+
+**Game opcodes.** Opcodes 0-79 are the engine's (52 used); 80-127 are the game's. A game installs a handler in its resident code with `b64_vm_op_set`, or names one in the manifest, `op 80 DRAW DEMO_OPS 0`: opcode 80, `OP_DRAW` in `slots.inc`, served by entry 0 of the module `DEMO_OPS`. The VM points each game opcode's vector at its handler while the handler's module is resident, and at a loader while it is away: the first DRAW brings the module in, and dispatch stays the 17 cycles of any opcode. A handler is written like an engine opcode: `VM_FETCH` for operands, `vm_pc` saved before calling the engine, `jmp vm_back`, `vm_next` or `vm_yield` to leave (all through the entry table), the variables at `B64_VM_LO`. This is where the compiler's spans go when a script calls them often: an opcode costs one byte to call, a SYS eight. CLAUDE.md's rule that a new behaviour is never a new opcode now holds for the engine's range; the game's range exists for exactly that.
+
+**The demo** (`examples/modules`, `make run-modules`). The game's resident code boots the engine and starts a script; it knows nothing of physics or AI. The script calls the physics module through SYS (the first call loads it), NEEDs the AI (the collision module comes first, as the AI requires it), adds six people and a parked car and gives them brains with STB, and steps AI and physics every frame through their interfaces. A second thread draws them with `DRAW` and puts on the status row, with `SHOW`, which module provides each interface; both are handlers in the game's own module at $3800. A third thread swaps the physics module for the water module and back, and asks for two loads the manager must refuse: the overlay example's code over the collision module, which the AI requires, and the water module over a pinned ground module.
+
+**What the check proves** (`modules.*`, `CHECK.md`): the loads in order (ground physics, collision, AI, the game's module, water, ground); the dependents each module has (the physics two, the collision module one) and none on an evicted module; both refusals with their reasons; the module in place byte for byte when its swap entry runs and the bodies' tables untouched by the swap; the people moving and in no wall; the status row; the same with the turbo bit set, with the setup done on frame 4 instead of 7. Measured: 90 ticks lost over 500 frames on a stock machine (the AI and physics for seven bodies, most of it), and 19,497 cycles for a swap, the 6.5 KB fetch and the physics' resume.
+
+**What it cost.** The resident engine grew from 7,498 to 8,797 bytes (the manager, the four opcodes, the game opcodes' dispatch) and low RAM from 608 to 1,044 (the table): most of what moving the cutscene out made room for. The manager's loading code runs only when a module loads, so it could itself be paged if the room is needed.
+
+**Not built yet.** The code cache of section 3 (small modules in 2 KB slots with LRU eviction, linked once per slot); modules here are linked for one address, and the manager places them by their ranges. The plan of section 5 and the compiler that emits NEED; the spans of section 6. A module's events waking a thread (roadmap step 15).

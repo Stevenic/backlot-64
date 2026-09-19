@@ -11,18 +11,12 @@
 .include "b64.inc"
 .include "slots.inc"
 
-.export cut_active
 
 CUT_REGION_STASH = SLOT_SCRATCH + $A000     ; region A's 6 KB during a scene (after game RAM's 8 KB)
-.ifdef B64_PROFILE
-CUT_SLOT = SLOT_CUTPROF         ; the module linked against the profiling engine, whose routines sit elsewhere
-.else
 CUT_SLOT = SLOT_CUT
-.endif
 
-.segment "LOWRAM"
-cut_active:     .res 1          ; set by the module once it has the display, cleared before it goes
-
+; cut_active (set by the module once it has the display, cleared before it
+; goes) lives at a fixed address in src/b64_api.s, for modules
 .segment "CODE"
 ; b64_cut_begin: region A stashed, the cutscene module fetched into it, and
 ; the scene's VIC layout (game RAM stashed too, by the module)
@@ -35,7 +29,8 @@ b64_cut_begin:
         B64_SET16 b64_len, CUT_SIZE
         B64_SET24 b64_reu, CUT_SLOT
         jsr b64_fetch
-        jmp CUT_BEGIN
+        jsr CUT_BEGIN
+        jmp b64_vm_ops          ; game opcodes in modules wait for the scene's end
 
 ; b64_cut_end: the module restores game RAM and the playfield's layout (and
 ; clears cut_active first, so no interrupt enters it again); then region A
@@ -45,4 +40,5 @@ b64_cut_end:
         B64_SET16 b64_ptr, CUT_BASE
         B64_SET16 b64_len, CUT_REGION
         B64_SET24 b64_reu, CUT_REGION_STASH
-        jmp b64_fetch
+        jsr b64_fetch
+        jmp b64_vm_ops          ; and are back

@@ -33,12 +33,11 @@
 .import spr_limit, mux_lead1, mux_step
 
 .segment "LOWRAM"
-b64_plat:       .res 1          ; B64_PLAT_* bits
-b64_reu_mb:     .res 1          ; REU size in MB: 0, 8 or 16 (anything smaller reports 8)
+; b64_plat and b64_reu_mb live at fixed addresses in src/b64_api.s, for modules
 b64_turbo:      .res 1          ; last value written to $D031, or $FF
 heap_ptr:       .res 3          ; next free REU byte in the game heap
 heap_end:       .res 3
-.export b64_plat, b64_reu_mb, b64_turbo
+.export b64_turbo
 
 .segment "CODE"
 

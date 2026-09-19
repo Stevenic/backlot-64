@@ -107,6 +107,7 @@ tick:    .res 2
 ped_t:   .res PHYS_NB           ; per pedestrian: frames until it picks a new way
 ped_in:  .res PHYS_NB
 crash_t: .res 1                 ; the player's car's impact at the last step (DEBRIS)
+veh_p:   .res 1                 ; a spinning rotor's frame, while one is worked out
 colour:  .res PHYS_NB
 tape_i:  .res 1                 ; AUTODRIVE: the tape's position and frames left
 tape_n:  .res 1
@@ -1247,7 +1248,10 @@ submit_shadow:
         lsr
         lsr
         lsr
-        ldy #0
+        ldy veh_k               ; the helicopter's shadow turns its blades too
+        bne :+
+        jsr blade
+:       ldy #0
         sty b64_reu+1
         lsr
         ror b64_reu+1
@@ -1272,8 +1276,21 @@ submit_shadow:
         lda #0
         jmp submit_frame
 
+; blade: A = heading -> A = its frame of a set of 16 headings by 4 blade
+; phases, the phase from the frame counter, so the rotor turns whatever the
+; helicopter is doing (a phase every two frames: 12.5 turns a second)
+blade:  asl a
+        asl a
+        sta veh_p
+        lda b64_frame
+        lsr a
+        and #3
+        ora veh_p
+        rts
+
 ; frame_of: X = body -> b64_reu = its sprite frame: a car or a boat at one
-; of 16 headings, a walker in one of two steps
+; of 16 headings, a helicopter also at one of 4 blade phases, a walker in
+; one of two steps
 frame_of:
         lda pb_mov,x
         cmp #M_FOOT             ; the commonest first
@@ -1301,7 +1318,11 @@ frame_of:
         lsr
         lsr
         lsr                     ; heading / 16
-        ldy #0
+        ldy veh_k               ; the helicopter's set turns its blades as well
+        cpy #6
+        bne :+
+        jsr blade
+:       ldy #0
         sty b64_reu+1
         lsr                     ; * 64 = (frame >> 2) << 8 | (frame & 3) << 6
         ror b64_reu+1

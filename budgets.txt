@@ -7,8 +7,8 @@
 # the commit.
 #
 # name                      limit   measured  what it protects
-engine.bytes                10227   #  7498   CODE + RODATA inside $080D-$2FFF, the resident engine (10,164 before the cutscene became a module)
-lowram.bytes                 1536   #   608   engine tables in $0200-$07FF (the multiplexer's lists moved to $9800; the cutscene's state to its module)
+engine.bytes                 9971   #  8797   CODE + RODATA inside $080D-$2EFF, the resident engine (the page at $2F00 is the modules' entry table); 7,498 before the module manager and SYS
+lowram.bytes                 1536   #  1044   engine tables in $0200-$07FF (608 before the module manager: its table is 400 bytes)
 
 bench.fetch_64_border         180   #   169   one sprite frame: setup plus 64 bytes
 bench.fetch_256_border        380   #   361   one script page (a page cache miss)
@@ -47,6 +47,15 @@ bench.scroll_diag            6000   #  5754   shift, column, row, stash: the tar
 bench.mux_first             16300   # 15524
 bench.mux_next               9020   #  8586   268 a sprite: sort, allocate, reject, group
 mux.irq_frame                8850   #  8389   32 sprites, one group every 4 lines
+
+# The module manager (docs/MODULES.md section 9, 2026-09-19): examples/modules,
+# the game in p-code.  Ticks lost from frame 100 to 600 on a stock machine,
+# with six people under the AI, a parked car, three loads (two of them
+# swaps) and two refusals; and one swap, the water module over the ground
+# module: the 6.5 KB fetch and the physics' resume (every body's map cache
+# again), from the manager's load to its return.
+modules.frames_lost            95   #    90
+modules.swap_cycles         20500   # 19497
 
 overlay.load_6k              7250   #  6881   a 6 KB code overlay into region A: 6,335-6,881 over six runs, as more or less
                                               # of it overlaps the display's badlines (8 KB until 2026-09-18: 9,097)

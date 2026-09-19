@@ -9,7 +9,7 @@ QUANT   = tools/b64quant.py tools/b64tileset.py tools/b64palette.py tools/b64for
 CFG     = b64.cfg
 INC     = -I include -I $(BUILD)
 
-ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_bench.s src/b64_scene.s src/b64_vm.s src/b64_page.s src/b64_plat.s   src/b64_overlay.s src/b64_probe.s
+ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_bench.s src/b64_scene.s src/b64_api.s src/b64_mod.s src/b64_vm.s src/b64_page.s src/b64_plat.s   src/b64_overlay.s src/b64_probe.s
 ENGINE_OBJS = $(patsubst src/%.s,$(BUILD)/%.o,$(ENGINE_SRCS))
 # probe builds: the same sources assembled with -DB64_PROFILE into build/prof
 PBUILD  = $(BUILD)/prof
@@ -28,13 +28,13 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky run-hover run-plane run-debris run-marsh run-crowd shot-scroll palette clean check bench
+.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky run-hover run-plane run-debris run-marsh run-crowd run-modules shot-scroll palette clean check bench
 
 # examples/physics's scenes, name:define (the SCENE template below)
 SCENES = boats:COAST sky:SKY hover:HOVER plane:PLANE debris:DEBRIS marsh:MARSH crowd:CROWD
 SCENE_NAMES = $(foreach s,$(SCENES),$(word 1,$(subst :, ,$(s))))
 SCENE_PRGS = $(foreach n,$(SCENE_NAMES),$(BUILD)/$(n).prg $(BUILD)/$(n)-auto.prg)
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(SCENE_PRGS) $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(BUILD)/modules.prg $(SCENE_PRGS) $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -88,10 +88,18 @@ $(BUILD)/block.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr $(BUILD)/airboat16.spr $(BUILD)/ai.bin $(BUILD)/cut.bin $(PBUILD)/cut.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr $(BUILD)/airboat16.spr $(BUILD)/ai.bin $(BUILD)/cut.bin $(BUILD)/modscript.bin $(BUILD)/modops.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
+# examples/modules: the game in p-code, and its own module (the handlers of its game opcodes)
+$(BUILD)/modscript.bin: examples/modules/script.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc modules/ai/ai.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc script.cfg | $(BUILD)
+	$(AS) -g -t c64 -I include -I $(BUILD) -o $(BUILD)/modscript.o $<
+	$(LD) -C script.cfg -o $@ $(BUILD)/modscript.o -Ln $(BUILD)/modscript.lbl
+$(BUILD)/modops.o: examples/modules/ops.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $@ $<
+$(BUILD)/modops.bin: $(BUILD)/modops.o $(BUILD)/overlay.prg examples/modules/ops.cfg tools/b64overlay.py
+	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl examples/modules/ops.cfg $(BUILD)/modops.o $(BUILD)/modops.bin
 $(BUILD)/scene.bin: examples/cutscene/scene.s include/b64.inc $(BUILD)/slots.inc script.cfg | $(BUILD)
 	$(AS) -g -t c64 -I include -I $(BUILD) -o $(BUILD)/scene.o $<
 	$(LD) -C script.cfg -o $@ $(BUILD)/scene.o -Ln $(BUILD)/scene.lbl
@@ -226,10 +234,6 @@ $(BUILD)/cut.o: modules/cut/cut.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -o $@ $<
 $(BUILD)/cut.bin: $(BUILD)/cut.o $(BUILD)/overlay.prg cut.cfg tools/b64overlay.py
 	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl cut.cfg $(BUILD)/cut.o $(BUILD)/cut.bin
-# and linked against the profiling engine (its routines sit elsewhere); until modules
-# call the engine through a fixed table (docs/MODULES.md), each engine needs its own link
-$(PBUILD)/cut.bin: $(BUILD)/cut.o $(PBUILD)/cutscene.prg cut.cfg tools/b64overlay.py
-	$(PY) tools/b64overlay.py $(PBUILD)/cutscene.lbl cut.cfg $(BUILD)/cut.o $(PBUILD)/cut.bin
 # the AI module: region A at $8D00, beside the collision module, which it calls
 $(BUILD)/ai.o: modules/ai/ai.s modules/ai/ai.inc modules/physics/defs.inc $(BUILD)/collision_syms.inc include/b64.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -I modules/physics -I modules/ai -o $@ $<
@@ -239,10 +243,11 @@ $(BUILD)/cars16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py car $@
 $(BUILD)/boats16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py boat $@
+# the helicopter and its shadow: 16 headings x 4 blade phases, so the rotor turns
 $(BUILD)/heli16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
-	$(PY) tools/b64rot.py heli $@
+	$(PY) tools/b64rot.py heli $@ --phases 4
 $(BUILD)/helish16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
-	$(PY) tools/b64rot.py helishadow $@
+	$(PY) tools/b64rot.py helishadow $@ --phases 4
 $(BUILD)/plane16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py plane $@
 $(BUILD)/planesh16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
@@ -327,6 +332,15 @@ $(BUILD)/cutscene.o: examples/cutscene/main.s include/b64.inc $(BUILD)/slots.inc
 
 $(BUILD)/cutscene.prg: $(ENGINE_OBJS) $(BUILD)/cutscene.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/cutscene.o -m $(BUILD)/cutscene.map -Ln $(BUILD)/cutscene.lbl
+
+$(BUILD)/modules.o: examples/modules/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $@ $<
+
+$(BUILD)/modules.prg: $(ENGINE_OBJS) $(BUILD)/modules.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/modules.o -m $(BUILD)/modules.map -Ln $(BUILD)/modules.lbl
+
+run-modules: $(BUILD)/modules.prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/modules.prg
 
 $(BUILD)/bench.o: examples/bench/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
 	$(AS) -g -t c64 -I include -I $(BUILD) -o $@ $<

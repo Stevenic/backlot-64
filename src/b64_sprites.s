@@ -49,7 +49,7 @@
 .export spr_init
 .export spr_limit, mux_lead1, mux_step
 .export spr_ready
-.export mux_first
+
 .export mux_rout, spr_rejected, mux_b_y, mux_acc   ; for the checks
 .export mux_tables              ; the tools read the list from here: see tools/b64muxhw.py
 mux_tables      = M
@@ -124,7 +124,8 @@ free_at:        .res 8          ; per hardware sprite: the first line after its 
 slot_lo:        .res B64_SPR_SLOTS      ; per slot: the REU address it holds
 slot_hi:        .res B64_SPR_SLOTS
 slot_bk:        .res B64_SPR_SLOTS
-mux_first:      .res 1          ; first hardware sprite the multiplexer may use: 1 (sprite 0 pinned) or 0
+; mux_first (the first hardware sprite the multiplexer may use: 1, sprite 0
+; pinned, or 0) lives at a fixed address in src/b64_api.s, for modules
 hw_count:       .res 1          ; 8 - mux_first
 rr_first:       .res 1          ; mux_first the routines were generated for ($FF = never)
 flg_or:         .res 1          ; flags of the list being built, ORed and ANDed

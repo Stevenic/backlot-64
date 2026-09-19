@@ -42,9 +42,12 @@ def load_labels(path):
 
 class Vice:
     def __init__(self, prg, reusize=8192, reuimage=None, labels=None, port=6510, warp=True, tries=3, x64="x64sc", reu=True, extra=()):
-        self.labels = {}                    # a program's labels, then any module's (a path or several)
-        for path in ([labels] if isinstance(labels, str) else labels or []):
-            self.labels.update(load_labels(path))
+        self.labels = {}                    # a program's labels, then any module's (a path or several);
+        for path in ([labels] if isinstance(labels, str) else labels or []):   # the first file to name a
+            for name, addr in load_labels(path).items():                       # label keeps it, so a module's
+                self.labels.setdefault(name, addr)                             # link to the engine's entry
+                                                                               # table ($2F00) never hides the
+                                                                               # engine's own routine
         self.port, self.proc, self.sock = port, None, None
         self._frame_watch = None
         args = [x64, "-default", "+sound", "+confirmonexit",

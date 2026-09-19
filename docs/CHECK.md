@@ -62,6 +62,8 @@ The scene checks (boats, sky, hover, plane, debris, marsh, crowd) run their tape
 
 **Sky.** Built with a helicopter (`build/sky-auto.prg`), the tape gets in, which swaps the air module in; flies over a six-storey block and settles onto its roof; flies back and settles onto the road; gets out, which swaps the ground module back. No body's box ever has a corner in what its mover counts as a wall, the helicopter's walls being buildings standing higher than it, from the tileset's heights (`sky.walls`); the swaps as for the boats (`sky.swap`); the helicopter is over the building in the air, rests on its roof at the roof's height, and never passes the ceiling (`sky.flight`); the player ends on foot, on land, with the ground module in (`sky.landed`); two runs end alike (`sky.repeat`).
 
+**Modules.** The module manager (`docs/MODULES.md` section 9) in `examples/modules`, a game written in p-code that calls the physics, collision and AI modules by address with SYS and draws with game opcodes from its own module. The loads in order: the ground physics for the first SYS, the collision module before the AI that requires it, the game's module for its first opcode, the water module's swap and the ground module's back (`modules.load_order`); the dependents each resident module has, none on an evicted one, no pins left (`modules.refs`); a load over the collision module and one over a pinned module refused, with the reasons the script read from `B64_MOD_ERR` (`modules.refusals`); the module in place byte for byte when its swap entry runs, the bodies' tables untouched by each swap (`modules.swap`); six people moving under the AI and in no wall (`modules.bodies`); the status row the `SHOW` opcode wrote (`modules.game_ops`). All of it again with the platform's turbo bit set, where loads happen inside the opcode, and the setup done sooner (`modules.turbo`).
+
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
 
 | Measured | How |
@@ -77,6 +79,8 @@ The scene checks (boats, sky, hover, plane, debris, marsh, crowd) run their tape
 | `mux.irq_frame` | the emulator's cycle counter from the interrupt handler's entry to its RTI, summed per frame, median of 20 |
 | `traffic.frames_lost` | frames without a callback in 3,000 of the traffic demo driving itself |
 | `boats.step_*`, `boats.frames_lost`, `sky.*`, `hover.*`, `plane.*`, `debris.*`, `marsh.*`, `crowd.*` | the same as the physics lines, over the coast's and the sky's 700 steps, through the jump table at $6009 so either module is timed |
+| `modules.frames_lost` | the modules demo: frames elapsed less the script's ticks, frames 100 to 600 (three loads, two refusals) |
+| `modules.swap_cycles` | the manager's `load` to its return for the water module's swap: the fetch and the physics' resume |
 | `physics.step_*`, `physics.frames_lost` | `phys_step` from entry to the callback's next routine (`shot_step`), interrupts included, every step of the tape in a third run (the first two are the frame-driven runs `physics.repeat` compares); frames without a callback in 800 |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.

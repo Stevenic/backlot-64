@@ -12,8 +12,16 @@ the physics module keeps (docs/PHYSICS.md).
 Colours: '2' the sprite's own colour (the body), '1' multicolour 0
 (windows, tyres: black in the examples), '3' multicolour 1 (lamps: white).
 
-usage: b64rot.py car|boat|heli|helishadow|plane|planeshadow|airboat <out.spr> [--headings 16] [--show]
+A shape whose blades turn takes a third argument, the blade angle, and is
+sampled at every phase of every heading: frame = heading * phases + phase,
+so the draw picks the phase from the frame counter and the blades turn
+whatever the craft is doing (asked for 2026-09-19: "a helicopters blades
+should always rotate").
+
+usage: b64rot.py car|boat|heli|helishadow|plane|planeshadow|airboat <out.spr>
+       [--headings 16] [--phases 1] [--show]
 """
+import inspect
 import math
 import os
 import sys
@@ -61,15 +69,17 @@ def boat(u, v):
     return "2"
 
 
-def heli(u, v):
-    """The colour at (u, v): a helicopter from above, its main rotor a cross
-    of two dark blades 20 pixels across, the fuselage under it."""
+def heli(u, v, ph=0.0):
+    """The colour at (u, v): a helicopter from above, its main rotor two dark
+    blades 20 pixels across at the angle ph, the fuselage under it, and its
+    tail rotor turning with it."""
     au, av = abs(u), abs(v)
     r = (u * u + v * v) ** 0.5
-    if r <= 10.0 and (abs(u - v) < 0.9 or abs(u + v) < 0.9):
-        return "1"                               # the main rotor's blades
-    if -11.5 <= u <= -9.5 and av <= 2.6:
-        return "1"                               # the tail rotor
+    c, s = math.cos(ph), math.sin(ph)
+    if r <= 10.0 and abs(u * s - v * c) < 0.9:
+        return "1"                               # the main rotor's two blades
+    if -11.5 <= u <= -9.5 and av <= 2.6 * abs(math.cos(ph * 2)) + 0.6:
+        return "1"                               # the tail rotor, turning with it
     if -9.5 < u < -3.0 and av <= 1.1:
         return "2"                               # the tail boom
     if ((u - 1.0) / 6.0) ** 2 + (v / 3.4) ** 2 <= 1.0:
@@ -108,8 +118,15 @@ def airboat(u, v):
     return "."
 
 
+def SPINS(shape):
+    """Whether a shape takes a blade angle."""
+    return len(inspect.signature(shape).parameters) == 3
+
+
 def silhouette(shape):
     """The same outline in one colour: a shadow on the ground."""
+    if SPINS(shape):
+        return lambda u, v, ph=0.0: "." if shape(u, v, ph) == "." else "2"
     return lambda u, v: "." if shape(u, v) == "." else "2"
 
 
@@ -117,11 +134,21 @@ SHAPES = {"car": car, "boat": boat, "heli": heli, "helishadow": silhouette(heli)
           "plane": plane, "planeshadow": silhouette(plane), "airboat": airboat}
 
 
-def frames(shape, headings):
+def frames(shape, headings, phases=1):
     out = []
     for k in range(headings):
         a = 2 * math.pi * k / headings
         c, s = math.cos(a), math.sin(a)
+        for p in range(phases):
+            out.append(sample(shape, c, s, math.pi * p / phases))
+    return out
+
+
+def sample(shape, c, s, ph):
+    """One frame: the shape in the craft's frame (c, s = its heading), its
+    blades at ph, each multicolour pixel the colour most of its four samples
+    show."""
+    if 1:
         rows = []
         for j in range(H):
             row = ""
@@ -133,7 +160,7 @@ def frames(shape, headings):
                         y = j + oy - CY
                         u = x * c + y * s                # into the vehicle's frame
                         v = -x * s + y * c
-                        col = shape(u, v)
+                        col = shape(u, v, ph) if SPINS(shape) else shape(u, v)
                         votes[col] = votes.get(col, 0) + 1
                 empty = votes.pop(".", 0)
                 if empty >= 3 or not votes:
@@ -141,18 +168,20 @@ def frames(shape, headings):
                 else:
                     row += max(sorted(votes), key=lambda col: votes[col])
             rows.append(row)
-        out.append(rows)
-    return out
+        return rows
 
 
 def main():
     name, out = sys.argv[1], sys.argv[2]
     n = int(sys.argv[sys.argv.index("--headings") + 1]) if "--headings" in sys.argv else 16
-    data = b"".join(encode_sprite(f, True) for f in frames(SHAPES[name], n))
+    ph = int(sys.argv[sys.argv.index("--phases") + 1]) if "--phases" in sys.argv else 1
+    fr = frames(SHAPES[name], n, ph)
+    data = b"".join(encode_sprite(f, True) for f in fr)
     with open(out, "wb") as f:
         f.write(data)
+    print(f"{name}: {n} headings x {ph} phases = {len(fr)} frames, {len(data)} bytes")
     if "--show" in sys.argv:
-        for k, f in enumerate(frames(SHAPES[name], n)):
+        for k, f in enumerate(fr):
             print(k)
             print("\n".join(f))
 

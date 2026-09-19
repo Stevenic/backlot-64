@@ -73,7 +73,7 @@ def static_checks(R):
         R.measure("engine.bytes", seg["CODE"] + seg["RODATA"])
         R.measure("lowram.bytes", seg["LOWRAM"])
     inc = dict(l.split("=") for l in open("build/slots.inc").read().replace(" ", "").splitlines() if "=" in l)
-    size_kib, header, slots = b64pack.read_manifest("reu.manifest")
+    size_kib, header, slots = b64pack.read_manifest("reu.manifest")[:3]
     for tier, (kib, image) in TIERS.items():
         d = open(image, "rb").read()
         R.check(f"image{tier}.size", len(d) == kib * 1024, f"{len(d)} bytes")
@@ -102,7 +102,7 @@ def boot_failures(R, port):
     cases = [("boot.no_reu", dict(reu=False), 2), ("boot.no_image", dict(reuimage=None), 7)]
     stale = f"{OUT}/stale8.reu"
     d = bytearray(open(TIERS[8][1], "rb").read())
-    _, header, _ = b64pack.read_manifest("reu.manifest")
+    header = b64pack.read_manifest("reu.manifest")[1]
     d[header + 5] ^= 0xFF
     open(stale, "wb").write(d)
     cases.append(("boot.stale_image", dict(reuimage=stale), 8))
@@ -883,6 +883,118 @@ def marsh(R, port):
     R.measure("marsh.frames_lost", d["lost"])
 
 
+def modules(R, port):
+    """The module manager (docs/MODULES.md section 9) in examples/modules, a
+    game written in p-code: its script calls the physics, collision and AI
+    modules by address with SYS and draws with game opcodes whose handlers
+    are in the game's own module; the VM loads each module the first time
+    it is needed, requirements first.  A loader thread swaps the physics
+    module for the water module and back, and asks for two loads that must
+    be refused: over the collision module, which the AI requires, and over
+    a pinned module.  Judged: the order of the loads; the dependents each
+    resident module has and that evicted ones have none; the refusals and
+    their reasons (read by the script from B64_MOD_ERR); the module in place
+    after the swap byte for byte, and the bodies' tables untouched by it;
+    the people moving under the AI and in no wall; the status row the game
+    opcode wrote.  Then again with the platform's turbo bit set, where loads
+    happen inside the opcode: the same loads and results, the setup sooner.
+    Measured: ticks lost over the run, and the cycles of the water module's
+    swap (fetch and resume)."""
+    import re
+    inc = {k: int(v.replace("$", "0x"), 0) for k, v in
+           (l.replace(" ", "").split("=") for l in open("build/slots.inc") if "=" in l and not l.startswith(";"))}
+    syms = {m.group(1): int(m.group(2), 16)
+            for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open("build/physics_syms.inc").read(), re.M)}
+    in_wall = scene_map()[0]
+    VLO, VHI = 0x2FA8, 0x2FA8 + 33
+    K, R_AI, R_WATER, R_OVL, R_OVLE, R_GND, R_PIN, R_PINE, R_DONE, R_TICK = 5, 10, 11, 12, 13, 14, 15, 16, 17, 18
+    G, W, COL, AI, OPS = (inc[f"MOD_{n}"] for n in ("PHYS_GROUND", "PHYS_WATER", "COLLISION", "AI", "DEMO_OPS"))
+    bins = {G: open("build/physics.bin", "rb").read(), W: open("build/water.bin", "rb").read()}
+    names = ("pb_mov", "pb_cls", "pb_xl", "pb_xh", "pb_yl", "pb_yh")
+
+    def bodies(v):
+        m = {n: v.mem(syms[n], 12) for n in names}
+        return {i: {"mov": m["pb_mov"][i], "cls": m["pb_cls"][i], "z": 0,
+                    "x": m["pb_xl"][i] | m["pb_xh"][i] << 8, "y": m["pb_yl"][i] | m["pb_yh"][i] << 8}
+                for i in range(12) if m["pb_mov"][i]}
+
+    def state(v):
+        n = v.mem("mod_logn")[0]
+        lo, hi = v.mem(VLO, 20), v.mem(VHI, 20)
+        return {"log": list(v.mem("mod_log", 16)[:n]), "res": [s >> 7 for s in v.mem("mod_state", 8)],
+                "refs": list(v.mem("mod_refs", 8)), "pins": list(v.mem("mod_pins", 8)),
+                "r": {i: lo[i] | hi[i] << 8 for i in range(20)}}
+
+    def run(turbo):
+        v = Vice("build/modules.prg", *TIERS[8], labels="build/modules.lbl", port=port)
+        out = {"walls": 0}
+        try:
+            if turbo:                                     # as the platform probe would on a C64 Ultimate
+                v.run_to("script_start")
+                v.poke(0x2FA0, [v.mem(0x2FA0)[0] | 4])
+            v.frames(100)
+            out["start"], frame, ticks, elapsed = bodies(v), v.mem(b64vice.FRAME)[0], state(v)["r"][K], 0
+            for i in range(50):                           # 100-600: the swaps and the refusals
+                v.frames(10)
+                now = v.mem(b64vice.FRAME)[0]
+                elapsed, frame = elapsed + ((now - frame) & 0xFF), now
+                b = bodies(v)
+                out["walls"] += sum(1 for x in b.values() if x["mov"] == 1 and in_wall(x))
+                st = state(v)
+            out["lost"] = elapsed - ((st["r"][K] - ticks) & 0xFFFF)
+            out["end"], out["st"] = bodies(v), st
+            out["hud"] = "".join(chr(c - 192 + 32) if 192 <= c < 256 else "?" for c in v.mem("hud_chars", 40)).rstrip()
+        finally:
+            v.close()
+        return out
+
+    a, t = run(False), run(True)
+    st = a["st"]
+    want_log = [G, COL, AI, OPS, W, G]
+    R.check("modules.load_order", st["log"] == want_log and t["st"]["log"] == want_log,
+            f"loads {st['log']} (turbo {t['st']['log']}), want {want_log}: the physics for the first SYS, the "
+            f"collision module before the AI that requires it, the game's module for its first opcode, the swaps")
+    res = [i for i in range(1, 8) if st["res"][i]]
+    refs_ok = (res == [G, COL, AI, OPS] and st["refs"][G] == 2 and st["refs"][COL] == 1 and st["refs"][AI] == 0
+               and st["refs"][W] == 0 and not any(st["pins"]))
+    R.check("modules.refs", refs_ok, f"resident {res}; dependents {st['refs'][1:8]}; pins {st['pins'][1:8]}")
+    r, rt = st["r"], t["st"]["r"]
+    ok = (r[R_AI], r[R_WATER], r[R_OVL], r[R_OVLE], r[R_GND], r[R_PIN], r[R_PINE], r[R_DONE]) == (1, 1, 0, COL, 1, 0, G, 1)
+    R.check("modules.refusals", ok and all(rt[i] == r[i] for i in range(R_AI, R_DONE + 1)),
+            f"over the collision module: {'refused' if not r[R_OVL] else 'loaded'} (in the way: {r[R_OVLE]}); over "
+            f"the pinned ground module: {'refused' if not r[R_PIN] else 'loaded'} (in the way: {r[R_PINE]}); "
+            f"the turbo run alike: {all(rt[i] == r[i] for i in range(R_AI, R_DONE + 1))}")
+    moved = sum(1 for i, b in a["end"].items() if b["mov"] == 1 and
+                abs(b["x"] - a["start"][i]["x"]) + abs(b["y"] - a["start"][i]["y"]) > 16)
+    walkers = sum(1 for b in a["end"].values() if b["mov"] == 1)
+    R.check("modules.bodies", walkers == 6 and moved >= 5 and a["walls"] == 0 and t["walls"] == 0,
+            f"{walkers} people, {moved} of them moved more than 16 pixels under the AI; "
+            f"{a['walls'] + t['walls']} body-samples inside a wall")
+    R.check("modules.game_ops", a["hud"].startswith("GROUND") and "COL" in a["hud"] and "OPS" in a["hud"],
+            f"the status row from the SHOW opcode: {a['hud']!r}")
+    R.check("modules.turbo", rt[R_TICK] < r[R_TICK],
+            f"setup finished on frame {rt[R_TICK]} with loads inside the opcode, {r[R_TICK]} with them queued")
+    R.measure("modules.frames_lost", a["lost"])
+    v = Vice("build/modules.prg", *TIERS[8], labels="build/modules.lbl", port=port)
+    swaps, cost = [], None
+    try:                                                   # the swaps: the fifth load and the sixth
+        for hits, mod in ((5, W), (1, G)):
+            pb = lambda: [v.mem(syms[n], 12) for n in names]
+            c0 = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("load", timeout=120, hits=hits))[-1])
+            before = pb()
+            v.run_to("call_vec")                           # fetched, its swap entry next
+            fresh = v.mem(0x6000, len(bins[mod])) == bins[mod]
+            c1 = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("b64_vm_ops"))[-1])
+            swaps.append((fresh, pb() == before))
+            cost = cost or c1 - c0
+    finally:
+        v.close()
+    R.check("modules.swap", len(swaps) == 2 and all(f and same for f, same in swaps),
+            f"the water module in place byte for byte when its swap entry runs, then the ground module: "
+            f"{[f for f, _ in swaps]}; the bodies' places and kinds the same after each swap: {[s for _, s in swaps]}")
+    R.measure("modules.swap_cycles", cost)
+
+
 def crowd(R, port):
     """The AI module (docs/AI.md) in examples/physics built with a crowd
     (-D CROWD): people about their business, two standing talking just out
@@ -1026,7 +1138,7 @@ def cutscene_ticks(R, port):
 
 def probe_block(R, port):
     """The profile build links and fills its block; its numbers are upper bounds and are not budgeted."""
-    v = Vice("build/prof/cutscene.prg", *TIERS[8], labels=("build/prof/cutscene.lbl", "build/prof/cut.bin.lbl"), port=port)
+    v = Vice("build/prof/cutscene.prg", *TIERS[8], labels=("build/prof/cutscene.lbl", "build/cut.bin.lbl"), port=port)
     try:
         v.run_to("b64_cut_text")
         v.frames(50)
@@ -1081,7 +1193,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover), ("plane", plane), ("debris", debris), ("marsh", marsh), ("crowd", crowd)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover), ("plane", plane), ("debris", debris), ("marsh", marsh), ("crowd", crowd), ("modules", modules)):
             if want(name):
                 guarded(name, fn, port)
 

@@ -166,7 +166,17 @@ VM_OP_SPRITE    = 88           ; slot, vx, vy, colour, slot24: submit one sprite
 VM_OP_PCM       = 90           ; ch, slot24, len24, rate16, vol, pan: play a sample (Ultimate Audio; no-op elsewhere)
 VM_OP_LIGHT     = 92           ; slot24, v: apply lighting state v (2 KB each) of the file at slot at the next base-phase blank
 VM_OP_LIGHTS    = 94           ; lightfile24, lamp24, n: n = 1 the engine lights the set from the object's own lights each frame it is drawn; 0 off
-VM_OP_COUNT     = 48            ; opcodes are stored doubled: byte = 2 * index into a page-aligned table
+; modules (docs/MODULES.md section 9)
+VM_OP_SYS       = 96           ; if, addr, va, vx, vy, vc: call native code at addr, the module providing if resident first (0: the engine
+                               ; or the game's resident code); A/X/Y from and back to va/vx/vy, vc = carry, 255 when it could not be made
+VM_OP_NEED      = 98           ; module, v: resident, loading it and its requirements (the thread waits); v = 1, or 0 refused
+VM_OP_LDB       = 100          ; v, addr, w: v = the byte at C64 address addr + w (w = VM_NONE: addr)
+VM_OP_STB       = 102          ; v, addr, w: the byte at addr + w = v
+VM_OP_COUNT     = 52            ; opcodes are stored doubled: byte = 2 * index into a page-aligned table
+VM_OP_ENGINE    = 80            ; indices 0-79 are the engine's (VM_OP_COUNT used, the rest END)
+VM_OP_GAME      = 160           ; and 80-127 the game's: bytes 160-254, 48 of them, whose handlers a game
+VM_GAME_OPS     = 48            ; installs (b64_vm_op_set) or the manifest's op lines name, in its modules
+VM_NONE         = $FF           ; a SYS register operand, or LDB/STB's index, that is not used
 ; (the constants above are the doubled bytes); script macros: one line per instruction
 .macro V_END
         .byte VM_OP_END
@@ -312,6 +322,45 @@ VM_OP_COUNT     = 48            ; opcodes are stored doubled: byte = 2 * index i
 .macro V_LIGHTS f, lamp, n
         .byte VM_OP_LIGHTS, <(f), >(f), ^(f), <(lamp), >(lamp), ^(lamp), n
 .endmacro
+.macro V_SYS if, addr, va, vx, vy, vc
+        .byte VM_OP_SYS, if, <(addr), >(addr), va, vx, vy, vc
+.endmacro
+.macro V_NEED m, v
+        .byte VM_OP_NEED, m, v
+.endmacro
+.macro V_LDB v, addr, w
+        .byte VM_OP_LDB, v, <(addr), >(addr), w
+.endmacro
+.macro V_STB v, addr, w
+        .byte VM_OP_STB, v, <(addr), >(addr), w
+.endmacro
+; a game opcode, n = 80-127; its operands follow as its handler reads them
+.macro V_OP n
+        .byte 2 * (n)
+.endmacro
+; in a game opcode's handler: A = the next operand byte (docs/MODULES.md)
+.macro VM_FETCH
+        lda (vm_page),y
+        iny
+        bne :+
+        jsr vm_wrap
+:
+.endmacro
+
+; the engine's entries (src/b64_api.s): the same in every build, for modules
+; and for scripts (SYS 0, API_...); the variables after them
+B64_API         = $2F00
+API_HUD_TEXT    = B64_API + 3 * 28
+API_HUD_NUMBER  = B64_API + 3 * 29
+API_MOD_NEED    = B64_API + 3 * 33
+API_MOD_QUEUE   = B64_API + 3 * 34
+API_MOD_PIN     = B64_API + 3 * 36
+API_MOD_UNPIN   = B64_API + 3 * 37
+B64_API_DATA    = $2FA0         ; b64_plat, b64_reu_mb, mux_first, cut_active, mod_err
+B64_MOD_ERR     = $2FA4         ; why the last load was refused: the module in the way, $FF nothing provides
+                                ; a requirement (or no such module), $FE a scene has the display
+B64_VM_LO       = $2FA8         ; the VM's variables: vm_lo, then vm_hi, 33 each
+B64_VM_HI       = B64_VM_LO + 33
 
 ; ---------------------------------------------------------------------------
 ; Zero page, engine-owned $02-$53
@@ -466,6 +515,21 @@ b64_obj_lights  = CUT_BASE + 39 ; b64_reu = baked lighting file, b64_val = lamp 
 .global b64_turbo_slow          ; 1 MHz, badlines on: the reference machine
 .global b64_heap_alloc          ; b64_val = 24-bit length -> b64_reu, C = 1
 .global b64_heap_reset
+; the module manager (src/b64_mod.s, docs/MODULES.md section 9)
+.global b64_mod_init            ; called by b64_init: the manifest's module table from the REU
+.global b64_mod_need            ; A = module: resident, its requirements first; C = 0 refused (mod_err says why)
+.global b64_mod_queue           ; A = module: load it after this frame's callback
+.global b64_mod_service         ; called by b64_run after the callback: one queued load
+.global b64_mod_find            ; A = interface -> X = the resident module providing it, C = 1
+.global b64_mod_default         ; A = interface -> X = the module the manifest names its default, C = 1
+.global b64_mod_pin             ; A = module: not evicted until unpinned
+.global b64_mod_unpin
+.global mod_state, mod_refs, mod_pins, mod_prov, mod_err, mod_fail, mod_log, mod_logn
+.global gop_if, gop_lo, gop_hi  ; the game opcodes: the interface whose module holds each handler (0 resident), the handler
+.global b64_vm_op_set           ; A = game opcode 80-127, X = interface (0 resident code), b64_val = handler
+.global b64_vm_ops              ; point the game opcodes at their handlers, or at the loader when away
+.global vm_lo, vm_hi            ; the VM's variables, at B64_VM_LO
+.global vm_wrap, vm_next, vm_back, vm_yield     ; a game opcode's handler: FETCH's wrap and the ways back
 ; the C64 Ultimate module's entries: a jump table at the start of region B,
 ; loaded at boot when the machine has the features, stubs (carry clear) otherwise
 b64_pcm_play    = B64_OVERLAY_B + 0     ; X = ch, b64_reu = sample, b64_val = len24, b64_tmp = rate16, +2 vol, +3 pan

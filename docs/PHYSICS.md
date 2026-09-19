@@ -22,7 +22,7 @@ A body's mover is fixed when it is added; a person getting into a car is the gam
 
 ## 2. The core
 
-**Numbers.** A position is 16.8 fixed point in world pixels (a fraction byte, then 16 bits). A velocity is 8.8 signed, in pixels a frame. Altitude is 8.8, 0 on the ground. A heading is one byte, 256 to a turn, 0 east and 64 south (screen y runs down), so a sprite frame of 16 headings is `(heading + 8) >> 4`. Sines come from a 256-byte table in 1.7 fixed point.
+**Numbers.** A position is 16.8 fixed point in world pixels (a fraction byte, then 16 bits). A velocity is 8.8 signed, in pixels a frame. Altitude is 8.8, 0 on the ground. A heading is one byte, 256 to a turn, 0 east and 64 south (screen y runs down), so a sprite frame of 16 headings is `(heading + 8) >> 4`. Sines come from a 256-byte table in 1.7 fixed point. A helicopter's set has 4 blade phases at each of those headings (`b64rot.py --phases 4`, 4 KB), and the drawing picks the phase from the frame counter, so the rotor turns whatever the craft is doing: frame = heading * 4 + phase, which is the same 16-bit multiply by 64 the other sets use.
 
 **Multiplying.** The 6502 has no multiply; the core multiplies 8 by 8 bits with a table of quarter squares, `a * b = f(a + b) - f(|a - b|)` with `f(x) = x * x / 4`, 1 KB for x up to 510. *After Codebase64, "Seriously fast multiplication". Changed: one table of f instead of four offset tables, so 1 KB instead of 2, for a few cycles more.*
 

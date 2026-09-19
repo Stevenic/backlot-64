@@ -18,7 +18,10 @@ import re, subprocess, sys
 
 def engine_globals():
     text = open("include/b64.inc").read()
-    return set(re.findall(r"^\.global\s+([A-Za-z_][A-Za-z0-9_]*)", text, re.M))
+    names = set()
+    for line in re.findall(r"^\.global\s+([^;\n]*)", text, re.M):    # one name or a list of them
+        names.update(n.strip() for n in line.split(",") if n.strip())
+    return names
 
 
 def labels(lbl_path):
@@ -35,8 +38,10 @@ def main():
     wanted = engine_globals()
     found = labels(lbl_path)
     defs = []
-    for name in sorted(wanted):
-        if name in found:
+    for name in sorted(wanted):                  # a routine through its fixed entry (src/b64_api.s),
+        if "api_" + name in found:               # so the module works with any build of the engine;
+            defs += ["-D", f"{name}=${found['api_' + name]}"]
+        elif name in found:                      # a variable at its own address (fixed there too)
             defs += ["-D", f"{name}=${found[name]}"]
     inc = None
     lbl_out = out + ".lbl"                   # always: the checks and the probe read a module's labels
