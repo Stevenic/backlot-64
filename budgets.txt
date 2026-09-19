@@ -86,9 +86,12 @@ traffic.frames_lost           150   #    22   the demo's own measure: see above
 # in it.  Frames without a callback in 760.  Measured after 690 frames at
 # first (4,521, 6,551, 51); the tape now ends with shooting and runs to 760,
 # with more bodies awake when it is measured: the same code, a busier scene.
-physics.step_median          6750   #  6369   phys_step over all 800 steps of the tape (was 24 quiet steps after it)
-physics.step_worst          16200   # 15104   a three-car pile-up: two pairs resolved in one step
-physics.frames_lost            44   #    40   of 800 (81 before the multiply shortcuts; 34 before the boats' shared code)
-boats.step_median            4100   #  3901   phys_step at the coast, over all 700 steps of the tape, either module in
-boats.step_worst            10250   #  9738
+physics.step_median          6750   #  6358   phys_step over all 800 steps of the tape (was 24 quiet steps after it)
+physics.step_worst          16200   # 15000   a three-car pile-up: two pairs resolved in one step
+physics.frames_lost            42   #    39   of 800 (81 before the multiply shortcuts; the status row made and shown on separate frames)
+boats.step_median            4100   #  3885   phys_step at the coast, over all 700 steps of the tape, either module in
+boats.step_worst            10250   #  9680
 boats.frames_lost               6   #     2   of 700, the two module swaps included
+sky.step_median              3350   #  3159   phys_step with a helicopter, over all 700 steps of the tape, either module in
+sky.step_worst               7050   #  6690
+sky.frames_lost                 6   #     2   of 700, the two module swaps included

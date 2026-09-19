@@ -516,110 +516,184 @@ def physics(R, port):
     R.measure("physics.frames_lost", lost)
 
 
-def boats(R, port):
-    """The water module in examples/physics built at the coast (-D COAST),
-    playing its tape: walk to the speedboat and get in, which swaps the
-    water module in over the ground module; ram the launch, turn away on the
-    propeller's wash, slide through a turn, run into the beach, get out on
-    the sand, which swaps the ground module back, and walk.  Every frame, no
-    body's box has a corner in what its mover counts as a wall: land for a
-    boat, walls and water for feet and wheels, judged from the world map
-    and the tileset's properties.  At each swap the body tables are the same
-    before and after, and the module in place is the one asked for, byte
-    for byte.  The boat slides and hits the shore; the launch is rammed; the
-    player ends on land with the ground module in.  Two runs end alike.  And
-    the step's cost and the frames lost."""
+def module_scene(port, prg, frames, swaps):
+    """Run examples/physics built for a scene that swaps physics modules
+    (the coast, the sky), four times: once a frame at a time, reading every
+    body each frame; again for the final state; once stopped at each swap
+    (the body tables before and after the fetch, and the module in place);
+    and once timing every step through the jump table at $6009, so either
+    module is timed.  Returns what the judges need."""
     import re
-    world = open("build/world.map", "rb").read()
-    props = open("build/bellamar_day.bin", "rb").read()[0x2800:0x2900]
     syms = {m.group(1): int(m.group(2), 16)
             for f in ("build/physics_syms.inc", "build/collision_syms.inc")
             for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open(f).read(), re.M)}
-    wsyms = {m.group(1): int(m.group(2), 16)
-             for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open("build/water_syms.inc").read(), re.M)}
-    bins = {0: open("build/physics.bin", "rb").read(), 1: open("build/water.bin", "rb").read()}
-    HW = [3, 7, 7, 9, 4, 7, 9, 4]
-    PB, PB_END = 0x7800, syms["phys_world"] + 3
-    names = ("pb_mov", "pb_cls", "pb_xl", "pb_xh", "pb_yl", "pb_yh", "pb_vtl", "pb_vth", "pb_st", "pb_hit")
+    bins = [open(f"build/{n}.bin", "rb").read() for n in ("physics", "water", "air")]
+    PB, PB_END = 0x7800, syms["phys_tiles"] + 3
+    names = ("pb_mov", "pb_cls", "pb_xl", "pb_xh", "pb_yl", "pb_yh", "pb_vtl", "pb_vth", "pb_st", "pb_hit",
+             "pb_zh", "pb_vzl", "pb_vzh")
 
     def bodies(v):
         m = {n: v.mem(syms[n], 12) for n in names}
         return {i: {"mov": m["pb_mov"][i], "cls": m["pb_cls"][i],
                     "x": m["pb_xl"][i] | m["pb_xh"][i] << 8, "y": m["pb_yl"][i] | m["pb_yh"][i] << 8,
                     "vt": int.from_bytes(bytes([m["pb_vtl"][i], m["pb_vth"][i]]), "little", signed=True),
-                    "st": m["pb_st"][i], "hit": m["pb_hit"][i]} for i in range(12) if m["pb_mov"][i]}
+                    "vz": int.from_bytes(bytes([m["pb_vzl"][i], m["pb_vzh"][i]]), "little", signed=True),
+                    "z": m["pb_zh"][i], "st": m["pb_st"][i], "hit": m["pb_hit"][i]}
+                for i in range(12) if m["pb_mov"][i]}
 
-    def in_wall(b):
-        h = HW[b["cls"]]
-        for cx in (b["x"] - h, b["x"] + h):
-            for cy in (b["y"] - h, b["y"] + h):
-                p = props[world[((cy >> 5) << 11) | (cx >> 5)]]
-                if (not p & 0x40) if b["mov"] == 3 else (p & 0xC0):
-                    return True
-        return False
-
-    finals, walls, slide, spray, shore, rammed, costs, lost, swaps = [], 0, 0, 0, 0, False, [], 0, []
-    landed = None
+    out = {"frames": [], "finals": [], "swaps": [], "costs": [], "lost": 0, "end": None}
     for run in range(4):
-        v = Vice("build/boats-auto.prg", *TIERS[8], labels="build/boats-auto.lbl", port=port)
+        lbl = prg[:-4] + ".lbl"
+        v = Vice(prg, *TIERS[8], labels=lbl, port=port)
         try:
             v.frames(10)
             t0 = v.word("tick")
-            if run == 2:                                                 # the swaps, stopped at each
-                for _ in range(2):
+            if run == 2:
+                for _ in range(swaps):
                     v.run_to("use_module")
                     before = v.mem(PB, PB_END - PB)
                     v.run_to("swapped")
                     after = v.mem(PB, PB_END - PB)
                     mod = v.mem("module")[0]
-                    b = bins[mod]
-                    swaps.append((mod, before == after, v.mem(0x6000, len(b)) == b))
+                    out["swaps"].append((mod, before == after, v.mem(0x6000, len(bins[mod])) == bins[mod]))
                 continue
-            if run == 3:                                                 # the step's cost, every step
-                for _ in range(700):
+            if run == 3:
+                for _ in range(frames):
                     a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(0x6009))[-1])
                     c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
-                    costs.append(c - a)
+                    out["costs"].append(c - a)
+                out["costs"].sort()
                 continue
-            for f in range(700):
+            for f in range(frames):
                 v.frames(1)
-                if run:
-                    continue
-                bs = bodies(v)
-                walls += sum(1 for b in bs.values() if in_wall(b))
-                p = v.mem("player")[0]
-                if p in bs and bs[p]["mov"] == 3:
-                    slide = max(slide, abs(bs[p]["vt"]))
-                    spray += bool(bs[p]["st"] & 1)
-                    shore += bool(bs[p]["st"] & 8)
-                rammed |= any(b["cls"] == 6 and b["hit"] for b in bs.values())
+                if not run:
+                    out["frames"].append((v.mem("player")[0], bodies(v)))
             if not run:
-                lost = 700 - (v.word("tick") - t0)
-                p = v.mem("player")[0]
-                b = bodies(v)[p]
-                landed = (b["mov"], v.mem("module")[0], in_wall(b))
-            finals.append(bodies(v))
+                out["lost"] = frames - (v.word("tick") - t0)
+                out["end"] = (v.mem("player")[0], v.mem("module")[0])
+            out["finals"].append(bodies(v))
         finally:
             v.close()
+    return out
+
+
+def scene_map():
+    """The world map, the tileset's properties and heights (storeys of 8
+    pixels), and a test of a body's box against what its mover counts as a
+    wall: land for a boat; a solid metatile standing higher than it for an
+    aircraft; walls and water for feet and wheels."""
+    world = open("build/world.map", "rb").read()
+    ts = open("build/bellamar_day.bin", "rb").read()
+    props, heights = ts[0x2800:0x2900], ts[0x2900:0x2A00]
+    HW = [3, 7, 7, 9, 4, 7, 9, 4, 8]
+
+    def cells(b):
+        h = HW[b["cls"]]
+        for cx in (b["x"] - h, b["x"] + h):
+            for cy in (b["y"] - h, b["y"] + h):
+                yield world[((cy >> 5) << 11) | (cx >> 5)]
+
+    def in_wall(b):
+        for m in cells(b):
+            p = props[m]
+            if b["mov"] == 3:
+                bad = not p & 0x40
+            elif b["mov"] == 4:
+                bad = p & 0x80 and heights[m] * 8 > b["z"]
+            else:
+                bad = p & 0xC0
+            if bad:
+                return True
+        return False
+
+    def over_building(b):
+        return any(props[m] & 0x80 for m in cells(b))
+
+    return in_wall, over_building, props, heights, world
+
+
+def boats(R, port):
+    """The water module in examples/physics built at the coast (-D COAST),
+    playing its tape: walk to the speedboat and get in, which swaps the
+    water module in over the ground module; ram the launch, turn away on the
+    propeller's wash, slide through a turn, run into the beach, get out on
+    the sand, which swaps the ground module back, and walk.  Every frame, no
+    body's box has a corner in what its mover counts as a wall, judged from
+    the world map and the tileset.  At each swap the body tables are the
+    same before and after, and the module in place is the one asked for,
+    byte for byte.  The boat slides and hits the shore; the launch is
+    rammed; the player ends on land with the ground module in.  Two runs
+    end alike.  And the step's cost and the frames lost."""
+    in_wall, _, _, _, _ = scene_map()
+    d = module_scene(port, "build/boats-auto.prg", 700, 2)
+    walls = sum(1 for _, bs in d["frames"] for b in bs.values() if in_wall(b))
+    boat = [bs[p] for p, bs in d["frames"] if p in bs and bs[p]["mov"] == 3]
+    slide = max((abs(b["vt"]) for b in boat), default=0)
+    spray = sum(1 for b in boat if b["st"] & 1)
+    shore = sum(1 for b in boat if b["st"] & 8)
+    rammed = any(b["cls"] == 6 and b["hit"] for _, bs in d["frames"] for b in bs.values())
+    p, mod = d["end"]
+    last = d["finals"][0][p]
+    landed = (last["mov"], mod, in_wall(last)) == (1, 0, False)
+    sw = d["swaps"]
     R.check("boats.walls", walls == 0, f"700 frames of the tape: {walls} body-frames with a corner in its mover's walls "
             "(land for a boat, walls and water for feet and wheels)")
-    R.check("boats.swap", len(swaps) == 2 and all(s[1] and s[2] for s in swaps) and [s[0] for s in swaps] == [1, 0],
-            f"{len(swaps)} swaps ({', '.join(('water' if s[0] else 'ground') for s in swaps)}): body tables "
-            f"{'unchanged' if all(s[1] for s in swaps) else 'CHANGED'} across each; the module in place "
-            f"{'matches' if all(s[2] for s in swaps) else 'DOES NOT match'} its binary")
+    R.check("boats.swap", len(sw) == 2 and all(s[1] and s[2] for s in sw) and [s[0] for s in sw] == [1, 0],
+            f"{len(sw)} swaps ({', '.join(('water', 'air')[s[0] - 1] if s[0] else 'ground' for s in sw)}): body tables "
+            f"{'unchanged' if all(s[1] for s in sw) else 'CHANGED'} across each; the module in place "
+            f"{'matches' if all(s[2] for s in sw) else 'DOES NOT match'} its binary")
     R.check("boats.slide", slide > 64 and spray > 0, f"the speedboat's sideways speed peaked at {slide}/256 pixel a frame, "
             f"spray for {spray} frames")
     R.check("boats.shore", shore > 0, f"the speedboat met the shore in {shore} frames")
     R.check("boats.ram", rammed, "the launch was rammed" if rammed else "the launch was never hit")
-    R.check("boats.landed", landed == (1, 0, False), "the player ends on foot, on land, with the ground module in"
-            if landed == (1, 0, False) else f"the player ends as mover {landed[0] if landed else '?'} with module "
-            f"{landed[1] if landed else '?'}")
-    R.check("boats.repeat", finals[0] == finals[1], "two runs of the tape end in the same state" if finals[0] == finals[1]
-            else "two runs of the tape end in different states")
-    costs.sort()
-    R.measure("boats.step_median", costs[len(costs) // 2])
-    R.measure("boats.step_worst", costs[-1])
-    R.measure("boats.frames_lost", lost)
+    R.check("boats.landed", landed, "the player ends on foot, on land, with the ground module in" if landed
+            else f"the player ends as mover {last['mov']} with module {mod}")
+    R.check("boats.repeat", d["finals"][0] == d["finals"][1], "two runs of the tape end in the same state"
+            if d["finals"][0] == d["finals"][1] else "two runs of the tape end in different states")
+    R.measure("boats.step_median", d["costs"][len(d["costs"]) // 2])
+    R.measure("boats.step_worst", d["costs"][-1])
+    R.measure("boats.frames_lost", d["lost"])
+
+
+def sky(R, port):
+    """The air module in examples/physics built with a helicopter (-D SKY),
+    playing its tape: walk to the helicopter and get in, which swaps the air
+    module in; climb, fly south over a six-storey block, settle onto its
+    roof; climb, fly back north and settle onto the road; get out, which
+    swaps the ground module back, and walk.  Every frame, no body's box has
+    a corner in what its mover counts as a wall: for the helicopter, a
+    building standing higher than it, judged from the map and the
+    tileset's heights.  The swaps as for the boats; the helicopter crosses
+    a building in the air, rests on its roof at the roof's height, and
+    never flies above the ceiling; the player ends on land with the ground
+    module in; two runs end alike.  And the step's cost."""
+    in_wall, over_building, _, _, _ = scene_map()
+    d = module_scene(port, "build/sky-auto.prg", 700, 2)
+    walls = sum(1 for _, bs in d["frames"] for b in bs.values() if in_wall(b))
+    heli = [bs[p] for p, bs in d["frames"] if p in bs and bs[p]["mov"] == 4]
+    crossed = sum(1 for b in heli if over_building(b) and b["z"] > 48)
+    roof = sum(1 for b in heli if over_building(b) and b["z"] == 48 and b["vz"] == 0)
+    top = max((b["z"] for b in heli), default=0)
+    p, mod = d["end"]
+    last = d["finals"][0][p]
+    landed = (last["mov"], mod, in_wall(last)) == (1, 0, False)
+    sw = d["swaps"]
+    R.check("sky.walls", walls == 0, f"700 frames of the tape: {walls} body-frames with a corner in its mover's walls "
+            "(for the helicopter, a building standing higher than it)")
+    R.check("sky.swap", len(sw) == 2 and all(s[1] and s[2] for s in sw) and [s[0] for s in sw] == [2, 0],
+            f"{len(sw)} swaps ({', '.join(('water', 'air')[s[0] - 1] if s[0] else 'ground' for s in sw)}): body tables "
+            f"{'unchanged' if all(s[1] for s in sw) else 'CHANGED'} across each; the module in place "
+            f"{'matches' if all(s[2] for s in sw) else 'DOES NOT match'} its binary")
+    R.check("sky.flight", crossed > 0 and roof > 0 and 0 < top <= 112,
+            f"over a building in the air for {crossed} frames, resting on its roof (48 pixels) for {roof}; "
+            f"highest {top} of a 112-pixel ceiling")
+    R.check("sky.landed", landed, "the player ends on foot, on land, with the ground module in" if landed
+            else f"the player ends as mover {last['mov']} with module {mod}")
+    R.check("sky.repeat", d["finals"][0] == d["finals"][1], "two runs of the tape end in the same state"
+            if d["finals"][0] == d["finals"][1] else "two runs of the tape end in different states")
+    R.measure("sky.step_median", d["costs"][len(d["costs"]) // 2])
+    R.measure("sky.step_worst", d["costs"][-1])
+    R.measure("sky.frames_lost", d["lost"])
 
 
 def mux_instrument(R, port):
@@ -729,7 +803,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky)):
             if want(name):
                 guarded(name, fn, port)
 

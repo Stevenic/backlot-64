@@ -2,9 +2,10 @@
 ; constants, zero page, and the body tables at fixed addresses.
 ;
 ; A pinned module (pinned.cfg): loaded into the game's module region at
-; $6000 when play starts.  Built so far: the core (numbers, the map under
-; each body, walls, collisions between bodies, rest) and two movers, foot
-; and wheels.  Water, air and thrown follow (docs/PHYSICS.md).
+; $6000 when play starts.  The core (numbers, the map under each body,
+; walls, collisions between bodies, rest) and the movers: foot, wheels,
+; hull, heli, grouped by kind of play into the ground, water and air
+; modules (docs/PHYSICS.md).
 ;
 ; Every routine that works on one body takes it in X and keeps it there.
 ; Zero page $80-$8F is the module's.
@@ -15,6 +16,7 @@ NB      = 12                    ; bodies
 M_FOOT  = 1
 M_WHEELS = 2
 C_HULL0 = 5                     ; the first hull class (the hull mover's tables start there)
+C_HELI  = 8
 
 ST_SKID  = $01                  ; sliding: more sideways speed than grip can take
 ST_DOWN  = $02                  ; on foot, knocked down
@@ -49,7 +51,7 @@ cur     = $8F                   ; the body being worked on
 ; collision module share, so a module swap keeps every body where it was
 PB_BASE = $7800
 M_HULL   = 3                    ; boats (the water module)
-M_AIR    = 4
+M_AIR    = 4                    ; aircraft (the air module)
 M_THROWN = 5
 .enum
         k_mov
@@ -83,6 +85,7 @@ M_THROWN = 5
         k_vzl
         k_vzh
         k_hw                    ; half size (boxes are square), from the class, for the collision module
+        k_agl                   ; aircraft: pixels above whatever is under it, for drawing (the air mover)
         k_count
 .endenum
 pb_mov  = PB_BASE + k_mov * NB
@@ -116,12 +119,14 @@ pb_zh   = PB_BASE + k_zh * NB
 pb_vzl  = PB_BASE + k_vzl * NB
 pb_vzh  = PB_BASE + k_vzh * NB
 pb_hw   = PB_BASE + k_hw * NB
+pb_agl  = PB_BASE + k_agl * NB
 cache   = PB_BASE + k_count * NB        ; 9 entries a body: the 3 x 3 metatiles' properties
 phys_x  = cache + 9 * NB                ; phys_add and phys_push take their input here
 phys_y  = phys_x + 2
 phys_a  = phys_y + 2
 phys_world = phys_a + 1                 ; the world map's REU address (SLOT_WORLD)
-PB_END  = phys_world + 3
+phys_tiles = phys_world + 3             ; the tileset's REU address: the air module reads its heights
+PB_END  = phys_tiles + 3
 .assert PB_END <= $7C00, error, "the body tables outgrow their place"
 ; the tables every physics module carries at the same addresses (pinned.cfg's
 ; PTAB at $7000): other modules may read them

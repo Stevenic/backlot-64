@@ -28,9 +28,9 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll run-traffic run-physics run-boats shot-scroll palette clean check bench
+.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky shot-scroll palette clean check bench
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/boats.prg $(BUILD)/boats-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/boats.prg $(BUILD)/boats-auto.prg $(BUILD)/sky.prg $(BUILD)/sky-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -84,7 +84,7 @@ $(BUILD)/block.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -207,7 +207,7 @@ publish-pages: pages
 # engine's labels, and an include of its tables' addresses for games
 $(BUILD)/phys_tables.inc: tools/b64phystab.py | $(BUILD)
 	$(PY) tools/b64phystab.py $@
-PHYS_SRCS = modules/physics/defs.inc modules/physics/core.s modules/physics/foot.s modules/physics/frame.s modules/physics/wheels.s modules/physics/hull.s modules/physics/tables.s modules/physics/private.s
+PHYS_SRCS = modules/physics/defs.inc modules/physics/core.s modules/physics/foot.s modules/physics/frame.s modules/physics/wheels.s modules/physics/hull.s modules/physics/heli.s modules/physics/tables.s modules/physics/private.s
 $(BUILD)/physics.o: modules/physics/ground.s $(PHYS_SRCS) include/b64.inc $(BUILD)/phys_tables.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
 $(BUILD)/physics.bin $(BUILD)/physics_syms.inc: $(BUILD)/physics.o $(BUILD)/overlay.prg pinned.cfg tools/b64overlay.py
@@ -221,6 +221,15 @@ $(BUILD)/cars16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py car $@
 $(BUILD)/boats16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py boat $@
+$(BUILD)/heli16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64rot.py heli $@
+$(BUILD)/helish16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64rot.py helishadow $@
+# the air module: the same core assembled with AIR, foot and the helicopter
+$(BUILD)/air.o: modules/physics/air.s $(PHYS_SRCS) include/b64.inc $(BUILD)/phys_tables.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
+$(BUILD)/air.bin $(BUILD)/air_syms.inc: $(BUILD)/air.o $(BUILD)/overlay.prg pinned.cfg tools/b64overlay.py
+	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl pinned.cfg $(BUILD)/air.o $(BUILD)/air.bin --inc $(BUILD)/air_syms.inc pb_,phys_
 # the water module: the same core, foot and the hull, swapped in at $6000
 $(BUILD)/water.o: modules/physics/water.s $(PHYS_SRCS) include/b64.inc $(BUILD)/phys_tables.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
@@ -249,6 +258,18 @@ $(BUILD)/boats-auto.prg: $(ENGINE_OBJS) $(BUILD)/boats-auto.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/boats-auto.o -Ln $(BUILD)/boats-auto.lbl
 run-boats: $(BUILD)/boats.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/boats.prg
+
+# and in the city with a helicopter (-D SKY): the air module
+$(BUILD)/sky-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D SKY=1 -o $@ $<
+$(BUILD)/sky-auto.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D SKY=1 -D AUTODRIVE=1 -o $@ $<
+$(BUILD)/sky.prg: $(ENGINE_OBJS) $(BUILD)/sky-demo.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/sky-demo.o -Ln $(BUILD)/sky.lbl
+$(BUILD)/sky-auto.prg: $(ENGINE_OBJS) $(BUILD)/sky-auto.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/sky-auto.o -Ln $(BUILD)/sky-auto.lbl
+run-sky: $(BUILD)/sky.prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/sky.prg
 
 run-traffic: $(BUILD)/traffic.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/traffic.prg

@@ -210,6 +210,18 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 - `hold`, which a module runs for a mover it does not carry, zeroed the world velocity but left the car's own frame of speeds as it was. A car moving when the water module came in would have stopped, then set off again at its old speed when the ground module returned. `hold` now marks the body so that its own mover takes up from rest.
 - The city tape's frames lost rose from 34 to 40 of 800. The step's median rose by 12 cycles, from the shared entry call, and the rest came from the example's own per-body work. The limit was raised to 44, and the commit says so.
 
+### 18 September, night: helicopters, and building heights
+
+**What was built.** The air module: the core assembled with `AIR`, the on-foot mover, and a helicopter. Altitude, reserved in the body tables since the split, is now in use. Fire held climbs to a ceiling; let go, the craft settles onto whatever is under its box. Flying, the stick thrusts it in the world's directions and it turns to face its way. Buildings needed heights, which the map never had. The tileset now carries a second table of 256 bytes beside the properties, one height per metatile in storeys of 8 pixels, and the tool refuses a solid metatile without one. The air module folds each building's height into the low bits of its cached properties, which are the road bits, and a building never has those. Its wall test then reads a building as a wall only below its height. A new entry, `phys_resume`, reloads every body's map cache after a swap, so the air module never reads entries the ground module wrote in its own form. The example builds a third time, with a helicopter on the road, and flies over a block, lands on its roof, and lands back on the road.
+
+**How it is checked.** Five checks. `sky.walls` judges the helicopter's box against the map and the tileset's heights, not against the module's cache. `sky.flight` requires the craft to be over the building in the air, to rest on its roof at the roof's height, and to stay under the ceiling. The swaps are checked as for the boats.
+
+**What went wrong on the way.**
+- Fire is the climb, so taking off was also a fresh press of fire, which the example reads as getting out. The player got in and straight back out. In an aircraft, getting out is now fire with the stick pulled down, on the ground.
+- Letting go took a sixth of the climb rate off a frame, so the craft kept rising for 43 frames and the tape's settle ended 10 pixels above the roof. Settling is now as quick as climbing.
+- The first frames on the roof drew the helicopter 24 pixels above its own shadow. The example raised it by its altitude, but roofs are drawn at ground level. The mover now leaves the height above whatever is under the craft in `pb_agl`, and the example draws from that.
+- The city scene's frames lost reached its limit again as the shared example grew. Instead of raising the limit a second time, the status row is now made on one frame and shown on another, as the traffic demo does. That took it from 44 to 39.
+
 ---
 
 ## What went wrong, and what caught it
@@ -255,6 +267,8 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | The tape's drift got the player out of the car | The same trace, entry by entry | The drift starts at speed; a tap when all but stopped means get out |
 | A rammed boat stayed stuck against the one it hit | A trace of the coast tape | Slow boats steer on the propeller's wash |
 | A walker started inside a palm tree | The coast's walls check, every frame | Moved; the check judges from the map, not the module |
+| Taking off in the helicopter got the player out | A trace of the sky tape | In an aircraft, getting out is fire with the stick down |
+| A landed helicopter was drawn above its own shadow | A screenshot on the roof | The mover publishes the height above what is under the craft |
 
 ---
 

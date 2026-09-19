@@ -10,6 +10,23 @@ phys_init:
         bpl :-
         rts
 
+; phys_resume: after this module was fetched over another.  Every body's
+; map cache again, in this module's own form: the air module folds each
+; building's height into it, and must not trust entries another wrote.
+phys_resume:
+.ifdef AIR
+        jsr load_heights
+.endif
+        ldx #NB-1
+@b:     lda pb_mov,x
+        beq @n
+        stx cur
+        jsr cache_load
+        ldx cur
+@n:     dex
+        bpl @b
+        rts
+
 ; phys_add: A = mover, Y = class, phys_x, phys_y, phys_a -> X = body, C=1
 phys_add:
         sta t0
@@ -41,6 +58,11 @@ phys_add:
         sta pb_hit,x
         sta pb_tmr,x
         sta pb_in,x
+        sta pb_zl,x
+        sta pb_zh,x
+        sta pb_vzl,x
+        sta pb_vzh,x
+        sta pb_agl,x
         lda phys_x
         sta pb_xl,x
         lda phys_x+1
@@ -291,7 +313,20 @@ sin_cos:
         rts
 
 ; ---------------------------------------------------------------------------
-; the map.  cache_load: X = body.  The property bytes of the 3 x 3 metatiles
+; the map.  HEIGHT: A = a metatile's properties, Y = the metatile.  In the air
+; module a solid metatile's low four bits (road bits, which a building never
+; has) become its height in storeys of 8 pixels, from the tileset's heights
+; table; elsewhere nothing.
+.macro HEIGHT
+.ifdef AIR
+        bpl :+                  ; (an unnamed label: a named one would end the
+        and #$F0                ; caller's scope for its @ labels)
+        ora heights,y
+:
+.endif
+.endmacro
+
+; cache_load: X = body.  The property bytes of the 3 x 3 metatiles
 ; around its centre, three 3-byte DMAs; cache[(row * 3 + col) * NB + body].
 cache_load:
         stx cl_x
@@ -372,10 +407,12 @@ cache_load:
         sta t1
         ldy cache_row
         lda B64_PROPS,y
+        HEIGHT
         ldy t1
         jsr put_cache
         ldy cache_row+1
         lda B64_PROPS,y
+        HEIGHT
         pha
         lda t0
         asl
@@ -387,6 +424,7 @@ cache_load:
         jsr put_cache
         ldy cache_row+2
         lda B64_PROPS,y
+        HEIGHT
         pha
         lda t0
         asl
@@ -461,6 +499,10 @@ wall_test:
         sta w_and
         lda wall_eor,y
         sta w_eor
+.ifdef AIR
+        lda wall_alt,y
+        sta w_alt
+.endif
         ldy pb_cls,x
         lda pb_xl,x
         and #31
@@ -535,7 +577,8 @@ wall_test:
         rts
 @wall:  sec
         rts
-; corner: A = cache entry 0-8 -> A = its wall bits (Z=1 if none)
+; corner: A = cache entry 0-8 -> A = its wall bits (Z=1 if none).  In the
+; air module an aircraft's wall is a solid metatile standing higher than it.
 corner:
         tay
         lda kofs,y
@@ -543,6 +586,24 @@ corner:
         adc ub
         tay
         lda cache,y
+.ifdef AIR
+        bit w_alt
+        bpl @plain
+        cmp #$80                ; solid?
+        bcc @clear
+        and #$0F                ; its storeys, in pixels
+        asl
+        asl
+        asl
+        cmp pb_zh,x              ; standing higher than the craft: a wall
+        beq @clear
+        bcc @clear
+        lda #1
+        rts
+@clear: lda #0
+        rts
+@plain:
+.endif
         and w_and
         eor w_eor
         rts
@@ -851,6 +912,20 @@ pair:
         bpl :+
         rts
 :
+.ifdef AIR
+        ldx pi                  ; the air module: bodies 8 pixels or more apart
+        ldy pj                  ; in height pass each other
+        lda pb_zh,x
+        sec
+        sbc pb_zh,y
+        bcs :+
+        eor #$FF
+        adc #1
+:       cmp #8
+        bcc :+
+        rts
+:
+.endif
         ldx pi                  ; dx = xj - xi, |dx| < hwi + hwj ?
         ldy pb_cls,x
         lda c_hw,y
@@ -1244,9 +1319,9 @@ shove:
 
 ; the classes every module shares, so a body keeps its box and mass through a
 ; swap: 0 a walker; 1 sedan, 2 sports car, 3 truck, 4 bike (wheels); 5
-; speedboat, 6 launch, 7 jet ski (hull)
-;                  walk  sedan  sport  truck   bike  speed launch    ski
-c_hw:     .byte       3,     7,     7,     9,     4,     7,     9,     4
-c_hh:     .byte       3,     7,     7,     9,     4,     7,     9,     4
-c_mass:   .byte       1,     8,     6,    15,     3,     5,    12,     2
+; speedboat, 6 launch, 7 jet ski (hull); 8 helicopter (air)
+;                  walk  sedan  sport  truck   bike  speed launch    ski   heli
+c_hw:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8
+c_hh:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8
+c_mass:   .byte       1,     8,     6,    15,     3,     5,    12,     2,     6
 kofs:     .byte 0*NB, 1*NB, 2*NB, 3*NB, 4*NB, 5*NB, 6*NB, 7*NB, 8*NB

@@ -1,12 +1,13 @@
-; backlot-64 physics, water: on foot and in boats (docs/PHYSICS.md).
+; backlot-64 physics, air: on foot and helicopters (docs/PHYSICS.md).
 ;
-; A pinned module (pinned.cfg), loaded into the game's module region at
-; $6000 in place of the ground module when the player takes to the water,
-; and swapped back on landing.  Both assemble the same core (core.s); the
-; body tables live above the module at fixed addresses (defs.inc), so the
-; swap keeps every body where it was.  Cars hold still while this module is
-; in (they have no mover here) and take up from rest when the ground module
-; returns.
+; A pinned module (pinned.cfg), fetched over the ground module at $6000 when
+; the player takes off and swapped back on landing, like the water module.
+; The core is assembled with AIR, which folds each building's height into
+; the map cache (from the tileset's heights table, phys_tiles), makes a
+; solid metatile a wall to an aircraft only below its height, and lets
+; bodies at different heights pass.  Call phys_resume after the fetch.
+
+AIR = 1
 
 .include "b64.inc"
 .include "defs.inc"
@@ -29,14 +30,15 @@
 
 .include "core.s"
 .include "foot.s"
-.include "frame.s"
-.include "hull.s"
+.include "heli.s"
 
 ; the movers this module carries, by mover number (the address less one)
-mover_tab:  .word hold-1, foot-1, hold-1, hull-1, hold-1, hold-1
-; what each mover counts as a wall: (properties & and) ^ eor, non-zero
+mover_tab:  .word hold-1, foot-1, hold-1, hold-1, heli-1, hold-1
+; what each mover counts as a wall: (properties & and) ^ eor, non-zero; for
+; an aircraft (wall_alt bit 7) a solid metatile standing higher than it
 wall_and:   .byte 0, WALL, WALL, P_WATER, 0, WALL
 wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0
+wall_alt:   .byte 0, 0, 0, 0, $80, 0
 
 .include "tables.s"
 .include "private.s"

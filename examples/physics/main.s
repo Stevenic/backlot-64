@@ -11,7 +11,8 @@
 ; Joystick 2.  On foot: eight directions, fire held to run, fire tapped
 ; beside a car to get in.  Driving: up for throttle, down to brake and then
 ; reverse, left and right to steer, fire held for the handbrake, fire tapped
-; when stopped to get out.  Assemble with -D AUTODRIVE=1 to play a recorded
+; when stopped to get out.  Flying: the stick moves, fire held climbs, let
+; go it settles; down with fire tapped, on the ground, gets out.  Assemble with -D AUTODRIVE=1 to play a recorded
 ; tape instead (the check does).
 ;
 ; Assembled with -D COAST=1 (make run-boats) it starts on the beach where the
@@ -21,6 +22,10 @@
 ; Every module is called through its jump table (PHYS_STEP and the rest), so
 ; the same calls work whichever is in.  A boat steers like a car without
 ; grip; down is reverse thrust.
+;
+; Assembled with -D SKY=1 (make run-sky) it starts on the pavement with a
+; helicopter on the road; getting in fetches the air module.  Buildings are
+; walls to it only below their height (the tileset's heights table).
 
 .include "b64.inc"
 .include "slots.inc"
@@ -32,7 +37,11 @@
 
 PCX     = 160                   ; the player's place on the playfield
 PCY     = 92
-.ifdef COAST
+.ifdef SKY
+START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000,
+START_Y = 1001 * 32 + 16        ; a six-storey block south of it (rows 1002-1005)
+ROAD_Y  = 1000 * 32 + 16
+.elseif .defined(COAST)
 START_X = 1700 * 32 + 16        ; the beach where the road at metatile row 1000 meets the sea
 START_Y = 1000 * 32 + 16
 SHORE   = 1704 * 32             ; the first pixel of water, all the way down the coast
@@ -88,6 +97,12 @@ game_main:
         sta phys_world+1
         lda #^SLOT_WORLD
         sta phys_world+2
+        lda #<SLOT_TILESET0     ; the tileset, for the air module's heights
+        sta phys_tiles
+        lda #>SLOT_TILESET0
+        sta phys_tiles+1
+        lda #^SLOT_TILESET0
+        sta phys_tiles+2
         lda #$5D
         sta rnd
         lda #0
@@ -145,12 +160,24 @@ game_main:
         lda #1
         sta VIC_SPR_MCOLOR1
         jsr hud_update
+        jsr hud_show
         lda #<frame
         ldx #>frame
         jsr b64_set_callback
         jmp b64_run
 
-.ifdef COAST
+.ifdef SKY
+; the starting bodies: the player on the pavement, a helicopter on the road
+; beside it, a car parked along the road, two walkers
+start_mov: .byte M_FOOT, M_AIR, M_WHEELS, M_FOOT, M_FOOT, 0
+start_cls: .byte C_WALKER, C_HELI, C_SEDAN, C_WALKER, C_WALKER
+start_xl:  .byte <START_X, <(START_X + 40), <(START_X - 70), <(START_X - 40), <(START_X + 90)
+start_xh:  .byte >START_X, >(START_X + 40), >(START_X - 70), >(START_X - 40), >(START_X + 90)
+start_yl:  .byte <START_Y, <ROAD_Y, <(ROAD_Y + 8), <START_Y, <START_Y
+start_yh:  .byte >START_Y, >ROAD_Y, >(ROAD_Y + 8), >START_Y, >START_Y
+start_ang: .byte 0, 0, 0, 0, 0
+start_col: .byte 13, 14, 2, 4, 3
+.elseif .defined(COAST)
 ; the starting bodies: the player on the beach, a speedboat moored at the
 ; water's edge, a launch and a jet ski at sea, a car on the sand, two walkers
 start_mov: .byte M_FOOT, M_HULL, M_HULL, M_HULL, M_WHEELS, M_FOOT, M_FOOT, 0
@@ -185,10 +212,13 @@ frame:
         jsr shot_step
         jsr follow
         jsr submit
-        lda tick
-        and #7
+        lda tick                ; the status row: made on one frame, shown on
+        and #7                  ; another, so the two costs never share one
         bne :+
-        jsr hud_update
+        jmp hud_update
+:       cmp #4
+        bne :+
+        jmp hud_show
 :       rts
 
 ; input: the stick, or the tape
@@ -240,6 +270,13 @@ control:
         rts
 @car:   lda tapped              ; driving: a tap when all but stopped gets out
         beq @drive
+        lda pb_mov,x            ; (in an aircraft fire is the climb: a tap with
+        cmp #M_AIR              ; the stick pulled down gets out)
+        bne :+
+        lda joy
+        and #IN_DOWN
+        beq @drive
+:
         lda pb_vlh,x
         beq @slow
         cmp #$FF
@@ -257,8 +294,8 @@ control:
         rts
 
 ; get_in: the nearest body within 22 pixels (the collision module's
-; col_near), if it is a car or a boat; C=1 if in.  A boat brings in the
-; water module.
+; col_near), if it is a car, a boat or an aircraft; C=1 if in.  A boat
+; brings in the water module, an aircraft the air module.
 get_in:
         lda #22
         jsr col_near
@@ -267,6 +304,8 @@ get_in:
         cmp #M_WHEELS
         beq :+
         cmp #M_HULL
+        beq :+
+        cmp #M_AIR
         bne @no
 :       sty camdx+1             ; in: the walker goes, the vehicle is the player's
         jsr PHYS_REMOVE
@@ -278,10 +317,10 @@ get_in:
         sta driving
         lda colour,x
         sta VIC_SPR0_COLOR
-        lda pb_mov,x
+        lda pb_mov,x            ; a boat brings the water module, an aircraft the air
         cmp #M_HULL
-        bne :+
-        lda #1
+        bcc :+
+        sbc #M_HULL - 1         ; 1 water, 2 air
         jsr use_module
 :       ldx player
         sec
@@ -290,11 +329,12 @@ get_in:
         clc
         rts
 
-; use_module: A = 0 ground, 1 water -> that physics module at $6000, unless
-; it is there already.  The body tables above it stay as they are.
+; use_module: A = 0 ground, 1 water, 2 air -> that physics module at $6000,
+; unless it is there already.  The body tables above it stay as they are;
+; the module then takes up every body's map cache in its own form.
 use_module:
         cmp module
-        beq swapped
+        beq in_place
         sta module
         tay
         lda mod_l,y
@@ -307,10 +347,12 @@ use_module:
         B64_SET16 b64_len, PHYS_SIZE
         jsr b64_fetch
 swapped:
+        jmp PHYS_RESUME
+in_place:
         rts
-mod_l:  .byte <SLOT_PHYSICS, <SLOT_WATER
-mod_m:  .byte >SLOT_PHYSICS, >SLOT_WATER
-mod_h:  .byte ^SLOT_PHYSICS, ^SLOT_WATER
+mod_l:  .byte <SLOT_PHYSICS, <SLOT_WATER, <SLOT_AIR
+mod_m:  .byte >SLOT_PHYSICS, >SLOT_WATER, >SLOT_AIR
+mod_h:  .byte ^SLOT_PHYSICS, ^SLOT_WATER, ^SLOT_AIR
 
 ; fire: a shot from the player the way it faces, 6 pixels a frame; standing
 ; still (no direction held), a grenade tossed that way instead
@@ -336,11 +378,14 @@ fire:
 
 ; get_out: a walker 18 pixels south of the vehicle, or else west, north or
 ; east, wherever its box is first clear of walls and water; none clear, the
-; player stays aboard.  The vehicle coasts; leaving a boat brings the ground
-; module back.
+; player stays aboard, as in an aircraft off the ground.  The vehicle
+; coasts; leaving a boat or an aircraft brings the ground module back.
 get_out:
         stx camdx+1
-        lda #3
+        lda pb_zh,x             ; an aircraft only once it is down on the ground
+        beq :+
+        rts
+:       lda #3
         sta out_k
 @try:   ldx camdx+1
         ldy out_k
@@ -383,8 +428,8 @@ get_out:
         ldx camdx+1
         lda pb_mov,x
         cmp #M_HULL
-        bne @no
-        lda #0
+        bcc @no
+        lda #0                  ; off a boat or out of an aircraft: the ground module
         jsr use_module
 @no:    ldx player
         rts
@@ -541,12 +586,18 @@ submit:
         bcs :+
         lda #24
 :       sta VIC_SPR0_X
+        lda pb_agl,x            ; raised by half its height over what is under it
+        lsr a
+        sta camdx
         lda pb_yl,x
         sec
         sbc b64_cam_y
         clc
         adc #40
+        sec
+        sbc camdx
         sta VIC_SPR0_Y
+        jsr submit_shadow
         ldx #PHYS_NB-1
 @b:     cpx player
         beq @n
@@ -730,6 +781,57 @@ submit_dot:
         jmp b64_spr_add
 @off:   rts
 
+; submit_frame: shx/shy (world), A = colour, sh_frame = a multicolour frame,
+; b64_spr_slot -> that frame there
+submit_frame:
+        sta b64_spr_colour
+        lda shx
+        sec
+        sbc b64_cam_x
+        sta camdx
+        lda shx+1
+        sbc b64_cam_x+1
+        sta camdx+1
+        lda camdx
+        clc
+        adc #12
+        sta b64_spr_x
+        lda camdx+1
+        adc #0
+        sta b64_spr_x+1
+        beq :+
+        cmp #1
+        bne @off
+        lda b64_spr_x
+        cmp #<344
+        bcs @off
+:       lda shy
+        sec
+        sbc b64_cam_y
+        tay
+        lda shy+1
+        sbc b64_cam_y+1
+        bne @off
+        tya
+        clc
+        adc #40
+        bcs @off
+        cmp #30
+        bcc @off
+        cmp #250
+        bcs @off
+        sta b64_spr_y
+        lda sh_frame
+        sta b64_reu
+        lda sh_frame+1
+        sta b64_reu+1
+        lda sh_frame+2
+        sta b64_reu+2
+        lda #B64_SPR_FLAG_MC
+        sta b64_spr_flags
+        jmp b64_spr_add
+@off:   rts
+
 ; submit_body: X = body, onto the multiplexer if it is on screen
 submit_body:
         lda pb_xl,x             ; sprite x = x - camera x + 12
@@ -752,17 +854,22 @@ submit_body:
         lda b64_spr_x
         cmp #<344
         bcs sb_out
-@xok:   lda pb_yl,x             ; sprite y = y - camera y + 40
+@xok:   lda pb_yl,x             ; sprite y = y - camera y + 40, less half its height
         sec
         sbc b64_cam_y
         sta camdx
         lda pb_yh,x
         sbc b64_cam_y+1
         bne sb_out
+        lda pb_agl,x
+        lsr a
+        sta sb_z
         lda camdx
         clc
         adc #40
         bcs sb_out
+        sec
+        sbc sb_z
         cmp #30
         bcc sb_out
         cmp #250
@@ -789,7 +896,56 @@ submit_body:
         lda #B64_SPR_FLAG_MC
         sta b64_spr_flags
         jsr b64_spr_add
+        ldx camdx
+        jmp submit_shadow
 sb_out: rts
+
+; submit_shadow: X = body.  An aircraft in the air: its outline in black
+; where it would stand (roofs are drawn at ground level, so over a roof too)
+submit_shadow:
+        lda pb_mov,x
+        cmp #M_AIR
+        bne sb_out
+        lda pb_agl,x
+        beq sb_out
+        lda pb_xl,x
+        sta shx
+        lda pb_xh,x
+        sta shx+1
+        lda pb_yl,x
+        sta shy
+        lda pb_yh,x
+        sta shy+1
+        lda pb_ang,x            ; its heading's frame of the shadow set
+        clc
+        adc #8
+        lsr
+        lsr
+        lsr
+        lsr
+        ldy #0
+        sty b64_reu+1
+        lsr
+        ror b64_reu+1
+        lsr
+        ror b64_reu+1
+        sta b64_reu+2
+        lda b64_reu+1
+        clc
+        adc #<SLOT_HELISH16
+        sta sh_frame
+        lda b64_reu+2
+        adc #>SLOT_HELISH16
+        sta sh_frame+1
+        lda #^SLOT_HELISH16
+        adc #0
+        sta sh_frame+2
+        txa                     ; slots 30-41, one a body
+        clc
+        adc #30
+        sta b64_spr_slot
+        lda #0
+        jmp submit_frame
 
 ; frame_of: X = body -> b64_reu = its sprite frame: a car or a boat at one
 ; of 16 headings, a walker in one of two steps
@@ -800,6 +956,9 @@ frame_of:
         beq @veh
         ldy #3
         cmp #M_HULL
+        beq @veh
+        ldy #6
+        cmp #M_AIR
         bne @foot
 @veh:   sty veh_k
         lda pb_ang,x
@@ -843,10 +1002,10 @@ frame_of:
         adc #0
         sta b64_reu+2
         rts
-veh_base: .faraddr SLOT_CARS16, SLOT_BOATS16
+veh_base: .faraddr SLOT_CARS16, SLOT_BOATS16, SLOT_HELI16
 
 ; ---------------------------------------------------------------------------
-; hud_update: what the player is doing
+; hud_update: what the player is doing, into hudbuf
 hud_update:
         ldy #40
 :       lda hud_tpl,y
@@ -900,7 +1059,23 @@ hud_update:
         tay
         lda tenths,y
         sta hudbuf+16
-        lda pb_dmg,x
+        lda pb_mov,x            ; an aircraft: its height instead, in pixels
+        cmp #M_AIR
+        bne @dmg
+        lda pb_zh,x
+        jsr put_dec3
+        ldy #8
+:       lda txt_alt,y
+        sta hudbuf+11,y
+        dey
+        bpl :-
+        lda hudbuf+29
+        sta hudbuf+15
+        lda hudbuf+30
+        sta hudbuf+16
+        lda hudbuf+31
+        sta hudbuf+17
+@dmg:   lda pb_dmg,x
         jsr put_dec3
         lda pb_st,x
         and #ST_SKID
@@ -919,7 +1094,11 @@ hud_update:
         sta hudbuf+35,y
         dey
         bpl :-
-@show:  B64_SET16 b64_val, hudbuf
+@show:  rts
+
+; hud_show: the status row as hud_update last made it
+hud_show:
+        B64_SET16 b64_val, hudbuf
         ldx #0
         jmp b64_hud_text
 
@@ -947,15 +1126,25 @@ put_dec3:
 hud_tpl:   .byte "              0.0 PX  DAMAGE 000         ", 0
 txt_foot:  .byte "ON FOOT", 0
 txt_skid:  .byte "SKID"
+txt_alt:   .byte "ALT      "
 txt_spray: .byte "SPRAY"
 cls_names: .byte "SEDAN", 0, "SPORTS", 0, "TRUCK", 0, "BIKE", 0, "SPEEDBOAT", 0, "LAUNCH", 0, "JET SKI", 0
-cls_off:   .byte 0, 0, 6, 13, 19, 24, 34, 41
+           .byte "HELICOPTER", 0
+cls_off:   .byte 0, 0, 6, 13, 19, 24, 34, 41, 49
 tenths:    .byte "0112334456678899"
 
 ; ---------------------------------------------------------------------------
 ; the tape (AUTODRIVE): frames, then the stick
 .ifdef AUTODRIVE
-.ifdef COAST
+.ifdef SKY
+; walk to the helicopter and get in (the air module comes in); climb, fly
+; south over the block and brake; settle onto its roof; climb again, fly
+; back north to the road and settle on it; get out (the ground module comes
+; back) and walk
+tape_len:  .byte 40, 30, 1, 1, 70, 20, 20, 12, 110, 30, 40, 14, 170, 1, 1, 40, 60, 0
+tape_joy:  .byte 0, IN_UP | IN_RIGHT, IN_FIRE, 0, IN_FIRE, IN_DOWN | IN_FIRE, IN_DOWN, IN_UP, 0, IN_FIRE
+           .byte IN_UP, IN_DOWN, 0, IN_DOWN | IN_FIRE, 0, IN_LEFT, 0
+.elseif .defined(COAST)
 ; walk east to the water's edge and get into the speedboat (the water module
 ; comes in); out to sea and into the launch; turn away on the propeller's
 ; wash; turn south-west, sliding wide, and run into the beach; drift to a
@@ -987,3 +1176,5 @@ module: .res 1                  ; the physics module at $6000: 0 ground, 1 water
 out_k:  .res 1
 land_k: .res 1
 veh_k:  .res 1
+sb_z:   .res 1
+sh_frame: .res 3

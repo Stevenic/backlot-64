@@ -49,6 +49,12 @@ P_ROAD_ALL = 0x0F
 
 FONT_BASE = 192
 
+# heights, in storeys of 8 pixels (docs/PHYSICS.md: aircraft clear them).
+# Roofs and facades are shared by every building, so Bellamar's buildings
+# all stand six storeys for now
+BUILDING = 6
+PALM = 3
+
 # The nine luma levels of every VIC-II after the 6569R1, 0..8, indexed by
 # palette entry: black, then seven pairs of equal luma, then white.
 # After Philip "Pepto" Timmermann, "Commodore VIC-II Color Analysis" (the
@@ -98,6 +104,7 @@ class Tileset:
         self.chars = {}
         self.order = []
         self.metatiles = []               # list of (cells[16], cols[16], props)
+        self.heights = []                 # storeys of 8 pixels, by metatile
         self.names = {}
         # reserve the font first so its indices are fixed
         self._reserve_font()
@@ -121,7 +128,13 @@ class Tileset:
                 rows.append(b)
             self.font += bytes(rows)
 
-    def add(self, name, canvas, props=0):
+    def add(self, name, canvas, props=0, height=0):
+        """A metatile.  A solid one (P_SOLID) stands height storeys of 8
+        pixels, 1 to 15, which aircraft must clear (docs/PHYSICS.md); anything
+        else stands none."""
+        if bool(props & P_SOLID) != bool(height) or not 0 <= height <= 15:
+            raise SystemExit(f"tileset {self.name}: metatile {name}: a solid metatile needs a height of 1-15 "
+                             f"storeys and nothing else may have one (got {height})")
         for w in check_dither(name, canvas, self.bg):
             print("warning:" + w)
         cs, screen, color, n = canvas.export(self.chars, self.order)
@@ -129,12 +142,14 @@ class Tileset:
             raise SystemExit(f"tileset {self.name}: more than {FONT_BASE} scene cells at metatile {name}")
         idx = len(self.metatiles)
         self.metatiles.append((bytes(screen), bytes(color), props))
+        self.heights.append(height)
         self.names[name] = idx
         return idx
 
     def pack(self):
         """Re-code the scene characters so every code's low four bits are
-        the colour its cells show, and build charset, metatiles and props."""
+        the colour its cells show, and build charset, metatiles, props and
+        heights."""
         per_bucket = FONT_BASE // 16                # codes v, v+16, ... below the font: 12
 
         def shows_cell_colour(ch, colour):
@@ -187,7 +202,8 @@ class Tileset:
             mtcolumns[i * 16:(i + 1) * 16] = bytes(codes[r * 4 + c] for c in range(4) for r in range(4))
             props[i] = p
         self.used = {v: len(b) for v, b in buckets.items() if b}
-        blob = charset + mtchars + mtcolumns + props
+        heights = bytes(self.heights) + bytes(256 - len(self.heights))
+        blob = charset + mtchars + mtcolumns + props + heights
         blob += bytes(12 * 1024 - len(blob))
         return bytes(blob)
 
@@ -232,12 +248,12 @@ def bellamar_day():
                       ("roof_white", WHITE), ("roof_red", RED), ("roof_green", GREEN)):
         c = mc(); c.cfill(0, 0, 4, 4, 3, col)
         c.hline(0, 0, 16, 2); c.vline(0, 0, 32, 2); c.rect(3, 3, 3, 3, 0)
-        ts.add(name, c, P_SOLID)
+        ts.add(name, c, P_SOLID, BUILDING)
     # roof interior (no edges) so bigger buildings tile
     for name, col in (("roofi_cyan", CYAN), ("roofi_purple", PURPLE), ("roofi_yellow", YELLOW),
                       ("roofi_white", WHITE), ("roofi_red", RED), ("roofi_green", GREEN)):
         c = mc(); c.cfill(0, 0, 4, 4, 3, col)
-        ts.add(name, c, P_SOLID)
+        ts.add(name, c, P_SOLID, BUILDING)
 
     # wall: v1 with blue windows, ground line
     c = mc(); c.cfill(0, 0, 4, 4, 1, BLUE)
@@ -245,7 +261,7 @@ def bellamar_day():
         for wx in range(1, 15, 3):
             c.fill(wx, r, 2, 2, 3)
     c.hline(0, 31, 16, 0)
-    ts.add("wall", c, P_SOLID)
+    ts.add("wall", c, P_SOLID, BUILDING)
     # sidewalk in a building's shadow
     c = mc(); c.cdither(0, 0, 4, 4, 0, 1, BLUE); ts.add("sidewalk_shadow", c, P_SIDEWALK)
     # door in a wall
@@ -254,7 +270,7 @@ def bellamar_day():
         for wx in range(1, 15, 3):
             c.fill(wx, r, 2, 2, 3)
     c.fill(6, 20, 4, 12, 0); c.hline(0, 31, 16, 0)
-    ts.add("door", c, P_SOLID | P_DOOR)
+    ts.add("door", c, P_SOLID | P_DOOR, BUILDING)
 
     # palm on sidewalk, palm on sand
     for name, base_v, base_col, bv in (("palm_walk", 1, BLUE, 0), ("palm_sand", 3, YELLOW, 0)):
@@ -266,7 +282,7 @@ def bellamar_day():
         c.crect(1, 0, 2, 2, GREEN); c.crect(1, 2, 2, 2, GREEN if base_v == 1 else YELLOW)
         c.hline(5, 2, 6, 3); c.hline(4, 3, 8, 3); c.hline(6, 4, 4, 3); c.put(4, 5, 3); c.put(11, 5, 3)
         c.vline(7, 5, 22, bv); c.vline(8, 6, 21, bv)
-        ts.add(name, c, P_SOLID)
+        ts.add(name, c, P_SOLID, PALM)
 
     # beach edge: sand over water
     c = mc(); c.cdots(0, 0, 4, 2, 3, 0, YELLOW, 4, 4); c.cfill(0, 2, 4, 2, 3, CYAN)

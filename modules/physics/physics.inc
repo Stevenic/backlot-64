@@ -1,6 +1,8 @@
 ; backlot-64 physics modules: what a game needs to use them (docs/PHYSICS.md).
-; A module is pinned at $6000: ground (on foot, wheels) or water (on foot,
-; hulls), swapped by fetching the other over it.  Call them through the jump
+; A module is pinned at $6000: ground (on foot, wheels), water (on foot,
+; hulls) or air (on foot, helicopters), swapped by fetching another over it
+; and calling PHYS_RESUME.  Set phys_world and phys_tiles (the tileset's REU
+; address, for the air module's heights) once at the start.  Call them through the jump
 ; table below; the body tables are in the generated build/physics_syms.inc,
 ; at the same addresses for every module (include both):
 ;   phys_init             every body free
@@ -22,10 +24,12 @@ PHYS_ADD        = PHYS_BASE + 3
 PHYS_REMOVE     = PHYS_BASE + 6
 PHYS_STEP       = PHYS_BASE + 9
 PHYS_PUSH       = PHYS_BASE + 12
+PHYS_RESUME     = PHYS_BASE + 15        ; after every fetch: the map caches again, in this module's form
 
 M_FOOT          = 1                     ; movers
 M_WHEELS        = 2
 M_HULL          = 3
+M_AIR           = 4
 
 C_WALKER        = 0                     ; classes (docs/PHYSICS.md section 4)
 C_SEDAN         = 1
@@ -35,6 +39,7 @@ C_BIKE          = 4
 C_SPEEDBOAT     = 5
 C_LAUNCH        = 6
 C_JETSKI        = 7
+C_HELI          = 8
 
 ST_SKID         = $01                   ; pb_st bits
 ST_DOWN         = $02

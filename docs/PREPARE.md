@@ -69,7 +69,9 @@ Every asset goes through a quantiser that enforces the VIC-II's real colour rule
 
 **The colour budget.** A cell's colour is packed into its screen code (the low four bits), so each colour value has twelve codes. A tileset may use at most twelve characters that show a given cell colour; a multicolour character with no '11' pixel pairs never shows the cell colour and goes wherever there is room. The tool prints the count per colour value and stops, naming the colour, when one is over. Over means redraw: fewer distinct shapes in that colour, or move a material to a shared colour.
 
-**Format:** charset (2 KB) at +$0000, metatiles by row (4 KB) at +$0800, the same by column at +$1800, properties (256 bytes) at +$2800, padded to 12 KB.
+**Format:** charset (2 KB) at +$0000, metatiles by row (4 KB) at +$0800, the same by column at +$1800, properties (256 bytes) at +$2800, heights (256 bytes) at +$2900, padded to 12 KB.
+
+**Heights.** Every solid metatile (`P_SOLID`) stands a height in storeys of 8 pixels, 1 to 15, which aircraft must clear; every other metatile stands none. Give it as the fourth argument of `ts.add`; the tool stops on a solid metatile without one, or a height on anything else. The air physics module reads the table (`PHYSICS.md`, heights). Keep a building's roof and facade metatiles at one height: they are shared by every building that uses them.
 
 **Check:** the tool warns on dithers too far apart in luminance. Fix the art, do not silence the warning.
 

@@ -24,3 +24,7 @@ cl_x:   .res 1
 w_and:  .res 1
 w_eor:  .res 1
 wv:     .res 6                  ; wheels: the car's frame on entry, and a byte forcing the world velocity
+.ifdef AIR
+w_alt:  .res 1
+heights: .res 256                       ; storeys by metatile, from the tileset (load_heights)
+.endif

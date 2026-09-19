@@ -79,6 +79,21 @@ DEMOS = [
         "note": "",
     },
     {
+        "key": "sky", "prg": "build/sky-auto.prg", "skip": 20, "frames": 640, "every": 1,
+        "title": "A helicopter over the roofs",
+        "source": "modules/physics", "run": "make run-sky",
+        "text": "The same example with a helicopter on the road. Getting in swaps the air physics module in; it keeps "
+                "altitude as a third coordinate, and every building in the tileset has a height, so a block is a "
+                "wall only below its roof. The helicopter climbs, flies south over a six-storey block, brakes and "
+                "settles onto its roof, then flies back and sets down on the road. It is drawn raised by half its "
+                "height above whatever is under it, with its shadow in black where it would stand.",
+        "facts": ["no body ever inside what its mover counts as a wall, judged from the map and the heights",
+                  "over the building in the air for 156 frames, on its roof at 48 pixels for 34",
+                  "2 module swaps: body tables byte for byte the same", "2 frames lost in 700"],
+        "check": "sky.walls, sky.swap, sky.flight, sky.landed",
+        "note": "",
+    },
+    {
         "key": "scroller", "prg": "build/scroll-auto.prg", "skip": 150, "frames": 600, "every": 1,
         "title": "A 4 MB world, scrolled",
         "source": "examples/scroll", "run": "make run-scroll",

@@ -8,11 +8,12 @@
 .include "b64.inc"
 .include "defs.inc"
 
-.export phys_init, phys_add, phys_remove, phys_step, phys_push
-.export phys_x, phys_y, phys_a, phys_world
+.export phys_init, phys_add, phys_remove, phys_step, phys_push, phys_resume
+.export phys_x, phys_y, phys_a, phys_world, phys_tiles
 .export pb_mov, pb_cls, pb_xf, pb_xl, pb_xh, pb_yf, pb_yl, pb_yh
 .export pb_vxl, pb_vxh, pb_vyl, pb_vyh, pb_vll, pb_vlh, pb_vtl, pb_vth
 .export pb_ang, pb_in, pb_st, pb_dmg, pb_hit, pb_surf, pb_tmr, pb_idle, pb_hw
+.export pb_zl, pb_zh, pb_vzl, pb_vzh, pb_agl
 .export phys_sine
 
 .segment "OVERLAY"
@@ -21,6 +22,7 @@
         jmp phys_remove         ; +6
         jmp phys_step           ; +9
         jmp phys_push           ; +12
+        jmp phys_resume         ; +15
 
 .include "core.s"
 .include "foot.s"
