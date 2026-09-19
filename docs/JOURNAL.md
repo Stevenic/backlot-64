@@ -277,6 +277,14 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 - The cruiser drove round a target inside its turning circle for 60 ticks. It now makes a three-point turn.
 - Ten moving bodies with physics and AI still do not fit a stock frame. The scene runs at about 20 ticks a second, and the budget says so.
 
+### 19 September: the module system decided; the cutscene leaves the resident core
+
+**The asks.** On how modules relate: "since modules can be dynamically loaded and unloaded we should track dependencies so that the VM doesn't unload something that's still needed. These modules all need to be callable from p-code." The design for that (`MODULES.md`: the VM as the module manager, `SYS`, `NEED`, a code cache) was written on 17 September and not built. It needs about 450 bytes of resident code before dependency tracking, and the resident engine had 63 bytes free. Steven chose to move the cutscene out: "moving cutscenes out to something that's loaded when needed make sense." He also asked for one load strategy on a stock C64 and another on VICE or the Ultimate, which he took to have more room. They have the same 64 KB of RAM. VICE is the stock reference, and the Ultimate adds speed and a bigger REU, so the strategies will differ in when they load, not in what fits. Three decisions were recorded for later steps. Assets and p-code are loaded from disk at mission boundaries, behind a mission overview screen that also saves the game, and saves are compact. Doors swap from the REU, never from disk. Interiors get a true 3/4 view, and a 3/4 street on foot is the Ultimate's upgrade.
+
+**What was built.** The cutscene is a module (`modules/cut`, 3.5 KB with its state), loaded into region A by a small resident `b64_cut_begin`. That routine first stashes what the region held, so a game's collision or AI modules come back when the scene ends. The engine reaches the module through a jump table, only while `cut_active` is set. The resident engine went from 10,164 bytes to 7,498 and low RAM from 1,294 to 608. A scene's frame costs what it did (10,007 cycles at the median against 9,999), and every cutscene and showcase check passes unchanged.
+
+**What it showed.** A module links against the engine's labels, so it is tied to one build of the engine. The profiling build places its routines elsewhere, and needs its own link of the same module in its own REU slot. The fix, a fixed table of engine entries that modules call through, comes with the module system's interface versions. Three engine internals the cutscene reached are now declared engine globals, which makes them part of what a module may rely on.
+
 ---
 
 ## What went wrong, and what caught it

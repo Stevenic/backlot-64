@@ -17,12 +17,9 @@
 .import split_line
 .import spr_init
 .import cut_active
-.import cut_vblank
 .import spr_ready
-.import b64_cut_frame
 .export irq_rti
 .export b64_irq = irq
-.import cut_split
 .import mux_first
 
 RASTER_VBLANK   = 255
@@ -188,7 +185,7 @@ b64_run:
         FTRACE 3
         PROBE_CALL probe_tick_begin
         jsr call_cb
-        jsr b64_cut_frame       ; the shimmer, after the callback and before the rows it touches are drawn
+        jsr CUT_FRAME           ; the shimmer, after the callback and before the rows it touches are drawn
         PROBE_CALL probe_tick_end
         FTRACE 6
         jmp @loop
@@ -232,7 +229,7 @@ irq:
 @tochain:
         jmp @chain
 @split:
-        jsr cut_split
+        jsr CUT_SPLIT
         lda #1
         sta split_done
         jmp @sched
@@ -254,7 +251,7 @@ irq:
         jsr scr_vblank
         jmp @spr
 @cutvb: jsr b64_spr_vblank      ; the sprite registers first, while the raster is still in the border
-        jsr cut_vblank
+        jsr CUT_VBLANK
         jmp @vbchk
 @spr:   jsr b64_spr_vblank
 @vbchk:

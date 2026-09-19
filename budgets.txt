@@ -7,8 +7,8 @@
 # the commit.
 #
 # name                      limit   measured  what it protects
-engine.bytes                10227   # 10164   CODE + RODATA inside $080D-$2FFF, the resident engine
-lowram.bytes                 1536   #  1294   engine tables in $0200-$07FF (the multiplexer's lists moved to $9800)
+engine.bytes                10227   #  7498   CODE + RODATA inside $080D-$2FFF, the resident engine (10,164 before the cutscene became a module)
+lowram.bytes                 1536   #   608   engine tables in $0200-$07FF (the multiplexer's lists moved to $9800; the cutscene's state to its module)
 
 bench.fetch_64_border         180   #   169   one sprite frame: setup plus 64 bytes
 bench.fetch_256_border        380   #   361   one script page (a page cache miss)
@@ -61,7 +61,7 @@ overlay.load_6k              7250   #  6881   a 6 KB code overlay into region A:
 # A tick that draws text (about 7,300 cycles) and a shimmer step in the same
 # frame overran it (21,087, 2026-09-18, when the multiplexer's cost moved the
 # scene a frame against the shimmer's phase); the step now waits a frame then.
-cutscene.tick_median        10450   #  9999   callback plus engine frame work, interrupts included
+cutscene.tick_median        10450   # 10007   callback plus engine frame work, interrupts included (through the cutscene module's jump table)
 cutscene.tick_worst         17500   # 17057   the same on a shimmer frame (every fourth); a frame is 19,656
 
 # The scroller in the autodrive example, interrupts included: the prepare's

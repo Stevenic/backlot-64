@@ -394,7 +394,7 @@ The engine reserves fixed regions. The game gets everything else.
 | $0002-$004F | 78 B | engine | Zero page: camera, scroll state, DMA scratch, sprite list pointers |
 | $0050-$00FF | 176 B | game | |
 | $0200-$07FF | 1.5 KB | engine | Sprite sort tables, split table, colour cycle list, the scroller's metatile ids and column buffer |
-| $0800-$2FFF | 10 KB | engine | Resident core (9.9 KB used with the VM, page cache, platform layer and multiplexer) |
+| $0800-$2FFF | 10 KB | engine | Resident core (7.3 KB used with the VM, page cache, platform layer and multiplexer; the cutscene is a module since 2026-09-19) |
 | $3000-$3FFF | 4 KB | game | Game resident core |
 | $4000-$43FF | 1 KB | engine | Screen A |
 | $4400-$47FF | 1 KB | engine | Screen B |
@@ -457,7 +457,7 @@ Measured with `-DFRAME_TRACE` on the cutscene example, 2026-09-17, after a stall
 |---|---|---|---|
 | Vertical-blank interrupt | Take the finished sprite list and write the first hardware sprites, then the mode's blank work (bitmap registers, a deferred park or unpark) | about 2,200 cycles | Short, and the sprite registers first so they are always written in the border. Nothing here may cost more than a few hundred cycles. |
 | Main loop, the game callback | The VM tick: every ready thread, the sprite grid submission, the frame streaming, the list sort | about 9,600 cycles on the cutscene | The game's budget. The engine measures it and the VM budget scales with the tier. |
-| Main loop, engine effects | `b64_cut_frame`: the reflection shimmer every fourth frame; later colour cycling and charset animation | about 3,000 cycles on a shimmer frame | Background effects live here, after the callback and before the rows they touch are drawn, so they cost frame time and never interrupt latency. Each effect declares its cost. |
+| Main loop, engine effects | the cutscene module's frame entry (`CUT_FRAME`, `b64_cut_frame` inside it): the reflection shimmer every fourth frame; later colour cycling and charset animation | about 3,000 cycles on a shimmer frame | Background effects live here, after the callback and before the rows they touch are drawn, so they cost frame time and never interrupt latency. Each effect declares its cost. |
 
 The frame holds when the three together stay under the 19,656 cycles a PAL frame has. A background effect that cannot fit is spread over frames, not moved into the interrupt: the shimmer running in the blank cost 8,700 cycles there and made the car hold still one frame in four.
 

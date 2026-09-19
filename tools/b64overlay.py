@@ -39,11 +39,11 @@ def main():
         if name in found:
             defs += ["-D", f"{name}=${found[name]}"]
     inc = None
+    lbl_out = out + ".lbl"                   # always: the checks and the probe read a module's labels
+    defs += ["-Ln", lbl_out]
     if "--inc" in sys.argv:
         k = sys.argv.index("--inc")
         inc, prefixes = sys.argv[k + 1], tuple(sys.argv[k + 2].split(","))
-        lbl_out = out + ".lbl"
-        defs += ["-Ln", lbl_out]
     cmd = ["ld65", "-C", cfg, "-o", out] + defs + [obj]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:

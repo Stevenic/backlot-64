@@ -30,7 +30,6 @@
 
 .include "b64.inc"
 
-.import shim_on
 .export b64_vm_start
 .export b64_vm_tick
 .export vm_budget_max
@@ -588,7 +587,7 @@ op_object:
         jmp back
 op_shimmer:
         FETCH
-        sta shim_on
+        jsr CUT_SHIMMER
         jmp vm_next
 op_text:
         FETCH

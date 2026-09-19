@@ -40,7 +40,7 @@ The map in `PLAN.md` section 5, with the current measured sizes.
 |---|---|---|---|
 | $0002-$0051 | 80 B | Engine zero page: camera, DMA parameters, sprite list, VM program counter | no |
 | $0200-$07FF | 1.5 KB | Engine tables: sprite sort and slots, VM variables and threads, cutscene state, interrupt scratch copy | no |
-| $0800-$2FFF | 10 KB | Engine resident core. Today 9.9 KB of code and tables, including the platform layer and the multiplexer. | no |
+| $0800-$2FFF | 10 KB | Engine resident core. Today 7.3 KB of code and tables, including the platform layer and the multiplexer; the cutscene became a module on 2026-09-19 (below) | no |
 | $3000-$3FFF | 4 KB | Game resident code: init, the frame callback, module glue | no |
 | $4000-$5FFF | 8 KB | VIC: screen A, screen B, charset, 48 sprite slots | the sprite slots stream |
 | $6000-$7FFF | 8 KB | Game RAM in play; the bitmap during a cutscene | stashed to the REU for a cutscene |
@@ -53,6 +53,8 @@ The map in `PLAN.md` section 5, with the current measured sizes.
 | $CC00-$CFFF | 1 KB | Overlay region B: the Ultimate module on a C64 Ultimate, stubs elsewhere | yes, whole |
 | $D000-$DFFF | 4 KB | I/O | |
 | $E000-$FFF9 | 8 KB | Game hot state: entity table, player, mission registers | parts stream (section 5) |
+
+**The cutscene is a module** (2026-09-19, `modules/cut`): its 2.7 KB of code and 0.8 KB of state stay in the REU during play. `b64_cut_begin` (resident, `src/b64_scene.s`) stashes region A to the REU (whatever a game had there: collision, AI, an overlay), fetches the 3.5 KB module into it, and hands over; the module stashes game RAM as before and takes the display. `b64_cut_end` lets the module restore the playfield, clearing `cut_active` first so no interrupt enters it again, and then puts region A back. The engine's interrupts and main loop reach it through its jump table (`CUT_*` in `include/b64.inc`) only while `cut_active` is set. This freed 2.7 KB of the resident core and 0.7 KB of low RAM for the module system (`MODULES.md`).
 
 BASIC and the KERNAL are banked out at init and never return. The engine core's 8 KB is a ceiling, not a target: the resident code is 6.6 KB with the VM and the page cache, and the rule in section 6 is what keeps it there.
 

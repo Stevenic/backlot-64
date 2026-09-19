@@ -421,20 +421,37 @@ B64_SPR_SLOTS     = 48          ; frames in VIC RAM, 64 bytes each at B64_SPRITE
 .global b64_spr_add             ; b64_spr_x/y/slot/colour/flags, b64_reu = frame source -> list entry
 .global b64_spr_pinned          ; b64_reu = frame source for the pinned sprite 0
 .global b64_spr_end             ; sort by y; shown from the next vblank
-.global b64_cut_begin           ; stash game RAM, switch to the cutscene VIC layout
-.global b64_cut_end             ; restore game RAM and the playfield layout
-.global b64_cut_still           ; b64_reu = still slot: load the set
-.global b64_cut_blit            ; b64_reu = block slot, A = cell x, X = cell y
-.global b64_cut_restore         ; A = cell x, X = cell y, Y = w, b64_val = h: restore from the still
-.global b64_cut_text            ; A = row 20-24, X = col, b64_val = string
-.global b64_cut_clear_text
-.global b64_obj_load            ; b64_reu = object slot: header and section addresses
-.global b64_obj_sprites         ; b64_spr_x/y = top-left VIC position, X = first slot: submit the grid
-.global b64_obj_anim            ; A = frame of the object's animation (wheels); sprites it touches use that frame
-.global b64_obj_park            ; A = cell x, X = cell y: blit the object's block at the next vblank
-.global b64_obj_unpark          ; A = cell x, X = cell y: restore the still there at the next vblank
-.global b64_cut_light           ; b64_reu = a 2 KB lighting state (tools/b64light.py): applied at the next base-phase blank
-.global b64_obj_lights          ; b64_reu = baked lighting file, b64_val = lamp frame, A = 1/0: light the set from the object's lights
+.global b64_cut_begin           ; stash region A and game RAM, load the cutscene module, switch to its VIC layout
+.global cut_active              ; set while the cutscene module has the display (the engine's interrupts read it)
+.global mux_first               ; the multiplexer's first hardware sprite: 1, or 0 when a scene takes all eight
+.global reu_advance_len         ; b64_reu += b64_len (a module stepping through an REU file)
+.global b64_cut_end             ; restore game RAM, the playfield layout and region A
+; The cutscene is a module (modules/cut) loaded into region A by b64_cut_begin
+; and gone after b64_cut_end: these are the entries of its jump table, valid
+; only between the two.
+CUT_BASE        = $8000
+CUT_REGION      = $1800         ; region A: stashed for the scene, restored after
+CUT_SIZE        = $0E00         ; the module, fetched whole (cut.cfg refuses it bigger)
+CUT_BEGIN       = CUT_BASE + 0
+CUT_END         = CUT_BASE + 3
+CUT_VBLANK      = CUT_BASE + 42 ; the engine's interrupt and main loop, while cut_active
+CUT_SPLIT       = CUT_BASE + 45
+CUT_FRAME       = CUT_BASE + 48
+CUT_SHIMMER     = CUT_BASE + 51 ; A = 1 on, 0 off
+.ifndef CUT_MODULE
+b64_cut_still   = CUT_BASE + 6  ; b64_reu = still slot: load the set
+b64_cut_blit    = CUT_BASE + 9  ; b64_reu = block slot, A = cell x, X = cell y
+b64_cut_restore = CUT_BASE + 12 ; A = cell x, X = cell y, Y = w, b64_val = h: restore from the still
+b64_cut_text    = CUT_BASE + 15 ; A = row 20-24, X = col, b64_val = string
+b64_cut_clear_text = CUT_BASE + 18
+b64_obj_load    = CUT_BASE + 21 ; b64_reu = object slot: header and section addresses
+b64_obj_sprites = CUT_BASE + 24 ; b64_spr_x/y = top-left VIC position, X = first slot: submit the grid
+b64_obj_anim    = CUT_BASE + 27 ; A = frame of the object's animation (wheels); sprites it touches use that frame
+b64_obj_park    = CUT_BASE + 30 ; A = cell x, X = cell y: blit the object's block at the next vblank
+b64_obj_unpark  = CUT_BASE + 33 ; A = cell x, X = cell y: restore the still there at the next vblank
+b64_cut_light   = CUT_BASE + 36 ; b64_reu = a 2 KB lighting state (tools/b64light.py): applied at the next base-phase blank
+b64_obj_lights  = CUT_BASE + 39 ; b64_reu = baked lighting file, b64_val = lamp frame, A = 1/0: light the set from the object's lights
+.endif
 .global b64_vm_start            ; b64_reu = script base in the REU, A/X = entry offset: kill all threads, run it as thread 0
 .global b64_vm_tick             ; once per frame from the game callback: run every ready thread
 .global b64_page_get            ; A/X = REU page number lo/hi -> A = high byte of its 256-byte copy in RAM

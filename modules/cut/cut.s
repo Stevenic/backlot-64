@@ -1,5 +1,11 @@
 ; backlot-64 cutscene module (E12).
 ;
+; A module since 2026-09-19: loaded into region A ($8000) by the resident
+; b64_cut_begin (src/b64_scene.s) when a scene starts, which first stashes
+; what region A held, and gone when b64_cut_end restores it.  Nothing here
+; is resident during play: the engine reaches it only through the jump table
+; below, and only while cut_active is set.  Its state lives in it.
+;
 ; Layers inside raster bands:
 ;   rows 0-19  multicolour bitmap: the still (set) with blitted blocks (props)
 ;   rows 20-24 character mode: the text band (font from the loaded tileset)
@@ -10,20 +16,12 @@
 ;   $5000 sprite slots                    $5C00 bitmap colour cells
 ;   $6000-$7FFF bitmap (game RAM, stashed to the REU for the duration)
 
+CUT_MODULE = 1                  ; b64.inc: the entries by their own names here, not as jump-table addresses
 .include "b64.inc"
 .include "slots.inc"
 
-.import reu_advance_len
-.import mux_first
-.export cut_active
-.export cut_vblank
-.export cut_split
-.export shim_on
-.export b64_cut_frame
-.export b64_cut_light
-.export b64_obj_lights
-.export light_cur, light_pending, lights_on, obj_nlights, obj_x, light_hdr, obj_lights   ; for the probe and tests
-.export cut_row_lo, cut_row_hi
+; reu_advance_len, mux_first and cut_active (resident, src/b64_scene.s) are
+; engine globals in b64.inc
 
 CUT_BITMAP      = $6000
 CUT_BMSCREEN    = $5C00
@@ -32,63 +30,34 @@ CUT_STASH       = SLOT_SCRATCH + $8000     ; 8 KB of game RAM lives here during 
 CUT_D018        = %01111000                ; colour cells $5C00, bitmap $6000
 TEXT_D018       = %00000010                ; screen $4000, charset $4800
 
-.segment "LOWRAM"
-cut_active:     .res 1
-still_base:     .res 3          ; REU address of the current still (for restores)
-cut_bg:         .res 1
-blk_w:          .res 1
-blk_h:          .res 1
-blk_x:          .res 1
-blk_y:          .res 1
-blk_row:        .res 1
-blk_tmp:        .res 2
-; object (sprite + block from one master)
-obj_hdr:        .res 8          ; gw, gh, cw, ch, mc0, ind, mc1, floor
-obj_spans:      .res 32         ; per block row: first visible cell, last+1
-obj_base:       .res 3
-obj_spr:        .res 3          ; sprite frames
-obj_bm:         .res 3          ; bitmap rows
-obj_scr:        .res 3          ; screen bytes
-obj_col:        .res 3          ; colour bytes
-park_pending:   .res 1          ; 0 none, 1 park, 2 unpark
-light_pending:  .res 1          ; 1 = apply the lighting state at light_addr at the next base-phase blank
-light_addr:     .res 3
-park_x:         .res 1
-park_y:         .res 1
-obj_k:          .res 1
-obj_gx:         .res 1
-obj_gy:         .res 1
-obj_slot:       .res 1
-obj_x:          .res 2
-obj_y:          .res 1
-obj_anim:       .res 3          ; animation section: nframes, nsprites, indices, frames
-shim_n:         .res 1          ; shimmer cells in the loaded still
-shim_cells:     .res 238        ; (column, row) pairs
-shim_lo:        .res 119        ; colour-cell address of each cell, low byte
-shim_hi:        .res 119        ; high byte; bit 7 set while the cell is under a parked block
-shim_on:        .res 1
-shim_due:       .res 1          ; a shimmer step is waiting to run
-cut_heavy:      .res 1          ; 1 when this tick drew text: the shimmer's step waits a frame
-shim_parked:    .res 1          ; 1 while an object block covers part of the still
-shim_rx0:       .res 1          ; the parked rectangle in cells: x0, x1 (exclusive), y0, y1
-shim_rx1:       .res 1
-shim_ry0:       .res 1
-shim_ry1:       .res 1
-anim_hdr:       .res 10         ; nframes, nsprites, up to 8 sprite indices
-obj_nlights:    .res 1          ; the object's light sources (lights section of the .b64o)
-obj_lights:     .res 64         ; up to 4 x 16: dx, dy, radius, lamp, npat, pad, (colour, frames) x 4
-lights_on:      .res 1          ; 1 = the engine lights the set from the object's lights
-lights_slot:    .res 3          ; the baked lighting file for this set and object
-lamp_slot:      .res 3          ; the lamp sprite frame
-light_hdr:      .res 34         ; the file's layout: 'L', n, x0 lo/hi, xstep, npos, per light base lo/hi, ncol, colours[4]
-light_cur:      .res 1          ; the state last queued, so a state is queued once
-anim_frame:     .res 1
+.segment "OVERLAY"
+        jmp cut_begin_m         ; +0   the scene's VIC layout (b64_cut_begin has loaded the module)
+        jmp cut_end_m           ; +3   the playfield's layout back, game RAM restored
+        jmp b64_cut_still       ; +6
+        jmp b64_cut_blit        ; +9
+        jmp b64_cut_restore     ; +12
+        jmp b64_cut_text        ; +15
+        jmp b64_cut_clear_text  ; +18
+        jmp b64_obj_load        ; +21
+        jmp b64_obj_sprites     ; +24
+        jmp b64_obj_anim        ; +27
+        jmp b64_obj_park        ; +30
+        jmp b64_obj_unpark      ; +33
+        jmp b64_cut_light       ; +36
+        jmp b64_obj_lights      ; +39
+        jmp cut_vblank          ; +42  from the engine's interrupt, while cut_active
+        jmp cut_split           ; +45
+        jmp b64_cut_frame       ; +48  from the main loop, while cut_active
+        jmp cut_shimmer         ; +51  A = 1 on, 0 off
 
-.segment "CODE"
+; cut_shimmer: A = 1 to shimmer the still's water and neon, 0 to stop
+cut_shimmer:
+        sta shim_on
+        rts
 
 ; ---------------------------------------------------------------------------
-; b64_cut_begin: stash game RAM, switch the VIC to the cutscene layout.
-b64_cut_begin:
+; cut_begin_m: stash game RAM, switch the VIC to the cutscene layout.
+cut_begin_m:
         B64_SET16 b64_ptr, CUT_BITMAP
         B64_SET16 b64_len, $2000
         B64_SET24 b64_reu, CUT_STASH
@@ -128,9 +97,9 @@ b64_cut_begin:
         sta VIC_CTRL1
         rts
 
-; b64_cut_end: restore game RAM and the playfield's VIC layout.  The game
-; calls b64_redraw afterwards.
-b64_cut_end:
+; cut_end_m: restore game RAM and the playfield's VIC layout.  The game
+; calls b64_redraw afterwards (b64_cut_end then puts region A back).
+cut_end_m:
         lda #0
         sta cut_active
         lda #1
@@ -1436,7 +1405,7 @@ cut_split:
         sta VIC_VIDEO_ADR
         rts
 
-.segment "RODATA"
+.segment "OVERLAY"
 cut_row_lo:
 .repeat 25, r
         .byte <(r*40)
@@ -1446,4 +1415,57 @@ cut_row_hi:
         .byte >(r*40)
 .endrepeat
 
-.segment "RODATA"
+.segment "OVERLAY"
+
+; ---------------------------------------------------------------------------
+; the module's state (it was resident in LOWRAM until 2026-09-19)
+still_base:     .res 3          ; REU address of the current still (for restores)
+cut_bg:         .res 1
+blk_w:          .res 1
+blk_h:          .res 1
+blk_x:          .res 1
+blk_y:          .res 1
+blk_row:        .res 1
+blk_tmp:        .res 2
+; object (sprite + block from one master)
+obj_hdr:        .res 8          ; gw, gh, cw, ch, mc0, ind, mc1, floor
+obj_spans:      .res 32         ; per block row: first visible cell, last+1
+obj_base:       .res 3
+obj_spr:        .res 3          ; sprite frames
+obj_bm:         .res 3          ; bitmap rows
+obj_scr:        .res 3          ; screen bytes
+obj_col:        .res 3          ; colour bytes
+park_pending:   .res 1          ; 0 none, 1 park, 2 unpark
+light_pending:  .res 1          ; 1 = apply the lighting state at light_addr at the next base-phase blank
+light_addr:     .res 3
+park_x:         .res 1
+park_y:         .res 1
+obj_k:          .res 1
+obj_gx:         .res 1
+obj_gy:         .res 1
+obj_slot:       .res 1
+obj_x:          .res 2
+obj_y:          .res 1
+obj_anim:       .res 3          ; animation section: nframes, nsprites, indices, frames
+shim_n:         .res 1          ; shimmer cells in the loaded still
+shim_cells:     .res 238        ; (column, row) pairs
+shim_lo:        .res 119        ; colour-cell address of each cell, low byte
+shim_hi:        .res 119        ; high byte; bit 7 set while the cell is under a parked block
+shim_on:        .res 1
+shim_due:       .res 1          ; a shimmer step is waiting to run
+cut_heavy:      .res 1          ; 1 when this tick drew text: the shimmer's step waits a frame
+shim_parked:    .res 1          ; 1 while an object block covers part of the still
+shim_rx0:       .res 1          ; the parked rectangle in cells: x0, x1 (exclusive), y0, y1
+shim_rx1:       .res 1
+shim_ry0:       .res 1
+shim_ry1:       .res 1
+anim_hdr:       .res 10         ; nframes, nsprites, up to 8 sprite indices
+obj_nlights:    .res 1          ; the object's light sources (lights section of the .b64o)
+obj_lights:     .res 64         ; up to 4 x 16: dx, dy, radius, lamp, npat, pad, (colour, frames) x 4
+lights_on:      .res 1          ; 1 = the engine lights the set from the object's lights
+lights_slot:    .res 3          ; the baked lighting file for this set and object
+lamp_slot:      .res 3          ; the lamp sprite frame
+light_hdr:      .res 34         ; the file's layout: 'L', n, x0 lo/hi, xstep, npos, per light base lo/hi, ncol, colours[4]
+light_cur:      .res 1          ; the state last queued, so a state is queued once
+anim_frame:     .res 1
+

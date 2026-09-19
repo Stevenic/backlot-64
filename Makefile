@@ -9,7 +9,7 @@ QUANT   = tools/b64quant.py tools/b64tileset.py tools/b64palette.py tools/b64for
 CFG     = b64.cfg
 INC     = -I include -I $(BUILD)
 
-ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_bench.s src/b64_cut.s src/b64_vm.s src/b64_page.s src/b64_plat.s   src/b64_overlay.s src/b64_probe.s
+ENGINE_SRCS = src/b64_core.s src/b64_reu.s src/b64_scroll.s src/b64_sprites.s src/b64_hud.s src/b64_bench.s src/b64_scene.s src/b64_vm.s src/b64_page.s src/b64_plat.s   src/b64_overlay.s src/b64_probe.s
 ENGINE_OBJS = $(patsubst src/%.s,$(BUILD)/%.o,$(ENGINE_SRCS))
 # probe builds: the same sources assembled with -DB64_PROFILE into build/prof
 PBUILD  = $(BUILD)/prof
@@ -88,7 +88,7 @@ $(BUILD)/block.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr $(BUILD)/airboat16.spr $(BUILD)/ai.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr $(BUILD)/airboat16.spr $(BUILD)/ai.bin $(BUILD)/cut.bin $(PBUILD)/cut.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -221,6 +221,15 @@ $(BUILD)/collision.o: modules/collision/collision.s modules/physics/defs.inc inc
 	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
 $(BUILD)/collision.bin $(BUILD)/collision_syms.inc: $(BUILD)/collision.o $(BUILD)/overlay.prg overlay.cfg tools/b64overlay.py
 	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl overlay.cfg $(BUILD)/collision.o $(BUILD)/collision.bin --inc $(BUILD)/collision_syms.inc col_,sh_,shot_,fx_,NS,th_,throw_,NT,db_,debris_,ND
+# the cutscene module: region A while a scene plays (b64_cut_begin stashes what was there)
+$(BUILD)/cut.o: modules/cut/cut.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $@ $<
+$(BUILD)/cut.bin: $(BUILD)/cut.o $(BUILD)/overlay.prg cut.cfg tools/b64overlay.py
+	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl cut.cfg $(BUILD)/cut.o $(BUILD)/cut.bin
+# and linked against the profiling engine (its routines sit elsewhere); until modules
+# call the engine through a fixed table (docs/MODULES.md), each engine needs its own link
+$(PBUILD)/cut.bin: $(BUILD)/cut.o $(PBUILD)/cutscene.prg cut.cfg tools/b64overlay.py
+	$(PY) tools/b64overlay.py $(PBUILD)/cutscene.lbl cut.cfg $(BUILD)/cut.o $(PBUILD)/cut.bin
 # the AI module: region A at $8D00, beside the collision module, which it calls
 $(BUILD)/ai.o: modules/ai/ai.s modules/ai/ai.inc modules/physics/defs.inc $(BUILD)/collision_syms.inc include/b64.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -I modules/physics -I modules/ai -o $@ $<

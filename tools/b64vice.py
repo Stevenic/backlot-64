@@ -42,7 +42,9 @@ def load_labels(path):
 
 class Vice:
     def __init__(self, prg, reusize=8192, reuimage=None, labels=None, port=6510, warp=True, tries=3, x64="x64sc", reu=True, extra=()):
-        self.labels = load_labels(labels) if labels else {}
+        self.labels = {}                    # a program's labels, then any module's (a path or several)
+        for path in ([labels] if isinstance(labels, str) else labels or []):
+            self.labels.update(load_labels(path))
         self.port, self.proc, self.sock = port, None, None
         self._frame_watch = None
         args = [x64, "-default", "+sound", "+confirmonexit",

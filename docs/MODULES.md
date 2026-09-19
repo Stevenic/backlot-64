@@ -113,6 +113,12 @@ The compiler gets an optimizer that turns a hot region of p-code into native 650
 
 ---
 
+## 7b. The first engine module: the cutscene (2026-09-19)
+
+The cutscene's primitives were resident in every program, though nothing calls them during play. They are now a module (`modules/cut`, 3.5 KB with its state) that `b64_cut_begin` loads into region A for a scene, after stashing what the region held, and `b64_cut_end` removes by restoring it: the first engine code paged by the design above, by hand until the code cache exists. The resident engine went from 10,164 to 7,498 bytes and low RAM from 1,294 to 608, which is the room the module manager, `SYS`, `NEED` and dependency tracking need (asked for 2026-09-19: the VM must never unload a module another loaded module still needs, and every module must be callable from p-code).
+
+It showed the next thing to fix. A module links against the engine's labels, so it is tied to one build of the engine: the profiling build, whose routines sit elsewhere, needs its own link of the same module in its own REU slot (`CUTPROF`). The fix is a fixed table of engine entries that modules call through, so a module survives an engine change; it belongs with the interface versions that dependency tracking needs.
+
 ## 8. Order of work
 
 1. **Code cache.** Three slots, pins, stamps, LRU, loads from the main loop. `examples/overlay` grows to exercise eviction and pinning. Measured: load cost per slot, compare cost.

@@ -108,7 +108,7 @@ def boot_failures(R, port):
     cases.append(("boot.stale_image", dict(reuimage=stale), 8))
     for name, kw, want in cases:
         try:
-            v = Vice("build/cutscene.prg", 8192, labels="build/cutscene.lbl", port=port, **kw)
+            v = Vice("build/cutscene.prg", 8192, labels=("build/cutscene.lbl", "build/cut.bin.lbl"), port=port, **kw)
             try:
                 out = v.run_to("b64_boot_halt", timeout=20)
                 a = int(out.split("A:")[1][:2], 16)
@@ -118,7 +118,7 @@ def boot_failures(R, port):
         except ViceError as e:
             R.check(name, False, str(e))
     os.unlink(stale)
-    v = Vice("build/cutscene.prg", *TIERS[8], labels="build/cutscene.lbl", port=port)
+    v = Vice("build/cutscene.prg", *TIERS[8], labels=("build/cutscene.lbl", "build/cut.bin.lbl"), port=port)
     try:
         v.run_to("b64_cut_text", timeout=30)
         R.check("boot.good_image", True, "reached the scene")
@@ -161,7 +161,7 @@ def overlay(R, tier, port):
 def cutscene(R, tier, port):
     kib, image = TIERS[tier]
     t = f"cut{tier}"
-    v = Vice("build/cutscene.prg", kib, image, "build/cutscene.lbl", port)
+    v = Vice("build/cutscene.prg", kib, image, ("build/cutscene.lbl", "build/cut.bin.lbl"), port)
     try:
         v.run_to("b64_cut_text")                 # the opening caption: the street is empty
         v.frames(20)
@@ -188,7 +188,7 @@ def cutscene(R, tier, port):
 def showcase(R, tier, port):
     kib, image = TIERS[tier]
     t = f"show{tier}"
-    v = Vice("build/showcase.prg", kib, image, "build/showcase.lbl", port)
+    v = Vice("build/showcase.prg", kib, image, ("build/showcase.lbl", "build/cut.bin.lbl"), port)
     try:
         v.run_to("b64_obj_lights", timeout=120)  # lights on, the drive begins
         v.run_to("b64_cut_text")                 # the caption after the drive: the car has stopped
@@ -1007,7 +1007,7 @@ def cutscene_ticks(R, port):
     cycle counter in the plain build: from the callback to the end of the
     engine's frame work, interrupts included, over the drive and the hold."""
     import re
-    v = Vice("build/cutscene.prg", *TIERS[8], labels="build/cutscene.lbl", port=port)
+    v = Vice("build/cutscene.prg", *TIERS[8], labels=("build/cutscene.lbl", "build/cut.bin.lbl"), port=port)
     try:
         v.run_to("b64_cut_text")
         v.frames(62)                            # the drive has begun
@@ -1026,7 +1026,7 @@ def cutscene_ticks(R, port):
 
 def probe_block(R, port):
     """The profile build links and fills its block; its numbers are upper bounds and are not budgeted."""
-    v = Vice("build/prof/cutscene.prg", *TIERS[8], labels="build/prof/cutscene.lbl", port=port)
+    v = Vice("build/prof/cutscene.prg", *TIERS[8], labels=("build/prof/cutscene.lbl", "build/prof/cut.bin.lbl"), port=port)
     try:
         v.run_to("b64_cut_text")
         v.frames(50)
