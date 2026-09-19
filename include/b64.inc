@@ -79,6 +79,7 @@ P_ROAD_E        = $01
 P_ROAD_W        = $02
 P_ROAD_S        = $04
 P_ROAD_N        = $08
+P_SHALLOW       = $01           ; on a water metatile (no roads on water): shallow, a marsh
 
 ; font: chars 192..255 hold ASCII 32..95.  The c64 target maps 'A'-'Z' to
 ; PETSCII in string literals; undo that so .byte "TEXT" is ASCII.

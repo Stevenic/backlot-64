@@ -29,11 +29,13 @@ def bellamar_test(mt):
     roofi = [mt["roofi_cyan"], mt["roofi_purple"], mt["roofi_yellow"], mt["roofi_white"], mt["roofi_red"], mt["roofi_green"]]
     wall, shadow, door = mt["wall"], mt["sidewalk_shadow"], mt["door"]
     palm_walk, palm_sand, shore = mt["palm_walk"], mt["palm_sand"], mt["shore_s"]
+    marsh = mt["marsh"]
 
     CITY_X0, CITY_X1 = 1200, 1696      # city grid, multiples of 8
     CITY_Y0, CITY_Y1 = 608, 1408
     BEACH_X0, BEACH_X1 = 1696, 1704
     OCEAN_X0 = 1704
+    MARSH_Y0, MARSH_Y1, MARSH_X1 = 1040, 1088, 1712    # the sand and the first of the ocean, south of the beach
     HWY_X, HWY_Y = 1024, 1024
 
     rows = []
@@ -42,7 +44,9 @@ def bellamar_test(mt):
         # ocean and beach on the east
         row[BEACH_X0:BEACH_X1] = bytes([sand]) * (BEACH_X1 - BEACH_X0)
         row[OCEAN_X0:W] = bytes([water]) * (W - OCEAN_X0)
-        if y % 6 == 0:
+        if MARSH_Y0 <= y < MARSH_Y1:
+            row[BEACH_X0:MARSH_X1] = bytes([marsh]) * (MARSH_X1 - BEACH_X0)
+        elif y % 6 == 0:
             for x in range(BEACH_X0 + 2, BEACH_X1, 4):
                 row[x] = palm_sand
         # highways across the grassland

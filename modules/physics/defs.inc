@@ -18,6 +18,7 @@ M_WHEELS = 2
 C_HULL0 = 5                     ; the first hull class (the hull mover's tables start there)
 C_HELI  = 8
 C_PLANE = 9
+C_AIRBOAT = 10
 
 ST_SKID  = $01                  ; sliding: more sideways speed than grip can take
 ST_DOWN  = $02                  ; on foot, knocked down
@@ -55,6 +56,7 @@ M_HULL   = 3                    ; boats (the water module)
 M_AIR    = 4                    ; aircraft (the air module)
 M_THROWN = 5
 M_PLANE  = 6                    ; aircraft with wings (the air module)
+M_AIRBOAT = 7                   ; the hull mover, but a marsh is water to it (the water module)
 .enum
         k_mov
         k_cls

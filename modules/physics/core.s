@@ -611,6 +611,12 @@ corner:
 ; surface: X = body.  pb_surf from the centre metatile: 0 road, 1 pavement,
 ; 2 rough ground, 3 water.
 surface:
+.ifdef WATER
+        lda cache+4*NB,x
+        ldy #3
+        and #P_WATER            ; water first: a marsh's shallow bit is a road bit
+        bne @set                ; (only here can a body stand on water)
+.endif
         lda cache+4*NB,x
         ldy #0
         and #$0F
@@ -619,10 +625,12 @@ surface:
         ldy #1
         and #P_SIDEWALK
         bne @set
+.ifndef WATER
         lda cache+4*NB,x
         ldy #3
         and #P_WATER
         bne @set
+.endif
         ldy #2
 @set:   tya
         sta pb_surf,x
@@ -1319,9 +1327,10 @@ shove:
 
 ; the classes every module shares, so a body keeps its box and mass through a
 ; swap: 0 a walker; 1 sedan, 2 sports car, 3 truck, 4 bike (wheels); 5
-; speedboat, 6 launch, 7 jet ski (hull); 8 helicopter, 9 plane (air)
-;                  walk  sedan  sport  truck   bike  speed launch    ski   heli  plane
-c_hw:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8,     8
-c_hh:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8,     8
-c_mass:   .byte       1,     8,     6,    15,     3,     5,    12,     2,     6,     5
+; speedboat, 6 launch, 7 jet ski (hull); 8 helicopter, 9 plane (air); 10
+; airboat (hull, crossing marsh)
+;                  walk  sedan  sport  truck   bike  speed launch    ski   heli  plane airbt
+c_hw:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8,     8,     7
+c_hh:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8,     8,     7
+c_mass:   .byte       1,     8,     6,    15,     3,     5,    12,     2,     6,     5,     4
 kofs:     .byte 0*NB, 1*NB, 2*NB, 3*NB, 4*NB, 5*NB, 6*NB, 7*NB, 8*NB

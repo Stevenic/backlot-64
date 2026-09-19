@@ -71,6 +71,8 @@ Every asset goes through a quantiser that enforces the VIC-II's real colour rule
 
 **Format:** charset (2 KB) at +$0000, metatiles by row (4 KB) at +$0800, the same by column at +$1800, properties (256 bytes) at +$2800, heights (256 bytes) at +$2900, padded to 12 KB.
 
+**Marsh.** A water metatile (`P_WATER`) never has road bits, so its low bit means shallow (`P_SHALLOW`): a marsh, which boats cannot cross and airboats can. Keep water metatiles' other low bits clear.
+
 **Heights.** Every solid metatile (`P_SOLID`) stands a height in storeys of 8 pixels, 1 to 15, which aircraft must clear; every other metatile stands none. Give it as the fourth argument of `ts.add`; the tool stops on a solid metatile without one, or a height on anything else. The air physics module reads the table (`PHYSICS.md`, heights). Keep a building's roof and facade metatiles at one height: they are shared by every building that uses them.
 
 **Check:** the tool warns on dithers too far apart in luminance. Fix the art, do not silence the warning.

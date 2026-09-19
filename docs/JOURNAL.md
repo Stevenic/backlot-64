@@ -251,6 +251,17 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 - Pieces never settled. After storing the halved bounce speed, the code branched on the Z flag, but a store sets no flags, so the branch tested the byte shifted just before. Every piece lived its full 48 ticks, about 100 frames at the rate the scene was running. The value is tested now (the rule in `CLAUDE.md` about testing values, not left-over flags, applies to stores too). Frames lost in the debris scene went from 100 to 73 of 560.
 - What remains is the real price. Six pieces in the air in a full city frame cost about half the frames while they fly. It is budgeted and stated, not hidden.
 
+### 18 September, night: airboats and the marsh
+
+**What was built.** The map had no marsh, so it got one. There is a marsh metatile, water in reeds, marked by the low bit of a water tile's properties. Water never has road bits, so the bit was free. There is also a band of marsh south of the beach, from the sand out into the sea. The airboat is the hull mover under a new number, with a wall mask that takes the marsh as water; a boat's mask now takes it as a wall. The seventh build of the example runs an airboat through the reeds and out to sea, past a speedboat pinned at the marsh's edge.
+
+**What went wrong on the way.**
+- The first marsh tile had varied reeds and green tufts. It needed 23 cyan characters and 13 green, where each colour has 12 (the colour is packed into the screen code). Cyan had room for one more. The marsh is now one tuft repeated in every cell.
+- The scene starts in the water module so the speedboat moves from the first frame. The start then zeroed its note of which module was in, so the example believed the ground module was loaded. This was harmless in the hover scene, which had the same fault, and wrong in both; the note is now set before the early swap.
+- The first airboat was parked 57 pixels from the reeds' edge, beyond getting in's reach, so the tap did nothing.
+
+**Next, asked for during this work.** Wing suits, paragliding and parasailing. They are gliders, which fit the air module.
+
 ---
 
 ## What went wrong, and what caught it

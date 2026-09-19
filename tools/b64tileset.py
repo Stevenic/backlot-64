@@ -43,6 +43,7 @@ P_ROAD_E = 0x01
 P_ROAD_W = 0x02
 P_ROAD_S = 0x04
 P_ROAD_N = 0x08
+P_SHALLOW = 0x01                 # on a water metatile (no roads on water): shallow, a marsh
 P_ROAD_HV = P_ROAD_E | P_ROAD_W
 P_ROAD_VV = P_ROAD_N | P_ROAD_S
 P_ROAD_ALL = 0x0F
@@ -233,6 +234,13 @@ def bellamar_day():
     ts.add("water", c, P_WATER)
     c = mc(); c.cdots(0, 0, 4, 4, 3, 0, YELLOW, 4, 4); ts.add("sand", c)
     c = mc(); c.cdots(0, 0, 4, 4, 1, 0, BLUE, 8, 8); ts.add("sidewalk", c, P_SIDEWALK)
+    # marsh: shallow water in reeds, which boats cannot cross and airboats can.
+    # One tuft, the same in every cell: cyan had room for one more character
+    c = mc(); c.cfill(0, 0, 4, 4, 3, CYAN)
+    for cy in range(4):
+        for cx in range(4):
+            c.vline(cx * 4 + 1, cy * 8 + 2, 4, 0); c.vline(cx * 4 + 2, cy * 8 + 4, 2, 0)
+    ts.add("marsh", c, P_WATER | P_SHALLOW)
 
     # roads: asphalt v0, curbs v1, dashes v2
     c = mc(); c.cfill(0, 0, 4, 4, 0, WHITE)

@@ -23,6 +23,10 @@
 ; the same calls work whichever is in.  A boat steers like a car without
 ; grip; down is reverse thrust.
 ;
+; Assembled with -D MARSH=1 (make run-marsh) it starts on the sand beside a
+; marsh with an airboat on the reeds: the marsh is water to an airboat and a
+; wall to a boat, and a speedboat at sea shows it.
+;
 ; Assembled with -D DEBRIS=1 (make run-debris) it plays a tape of crashes
 ; and a blast; each throws out debris, which ignores everything but the
 ; ground.  Only this scene asks for debris: every piece is a sprite, and the
@@ -68,6 +72,10 @@ START_Y = 1001 * 32 + 16        ; the helicopter lifts off the pavement across i
 HELI_Y  = 999 * 32 + 24
 HOVER_Z = 32                    ; the height it holds, pixels
 HOVER_UNTIL = 330               ; the tick it lets go and settles
+.elseif .defined(MARSH)
+START_X = 1700 * 32 + 16        ; the sand at the north edge of the marsh (metatile rows
+START_Y = 1038 * 32 + 16        ; 1040-1087, from the sand to column 1711 in the sea)
+SEA_X   = 1716 * 32             ; deep water, east of the marsh
 .elseif .defined(COAST)
 START_X = 1700 * 32 + 16        ; the beach where the road at metatile row 1000 meets the sea
 START_Y = 1000 * 32 + 16
@@ -135,9 +143,15 @@ game_main:
         sta phys_tiles+1
         lda #^SLOT_TILESET0
         sta phys_tiles+2
+        lda #0                  ; the ground module is in (fetched above)
+        sta module
 .ifdef HOVER
         lda #2                  ; this scene starts in the air module
         jsr use_module
+.endif
+.ifdef MARSH
+        lda #1                  ; this scene starts in the water module: the
+        jsr use_module          ; speedboat at sea moves from the first frame
 .endif
         lda #$5D
         sta rnd
@@ -146,7 +160,6 @@ game_main:
         sta tick+1
         sta driving
         sta crash_t
-        sta module
         sta joywas
         sta tape_i
         sta tape_n
@@ -236,6 +249,17 @@ start_yl:  .byte <START_Y, <HELI_Y, <(1000 * 32 + 24)
 start_yh:  .byte >START_Y, >HELI_Y, >(1000 * 32 + 24)
 start_ang: .byte 0, 0, 0
 start_col: .byte 13, 14, 2
+.elseif .defined(MARSH)
+; the starting bodies: the player on the sand, an airboat on the reeds south
+; of it, and a speedboat at sea that heads west into the marsh (captains)
+start_mov: .byte M_FOOT, M_AIRBOAT, M_HULL, 0
+start_cls: .byte C_WALKER, C_AIRBOAT, C_SPEEDBOAT
+start_xl:  .byte <START_X, <START_X, <SEA_X
+start_xh:  .byte >START_X, >START_X, >SEA_X
+start_yl:  .byte <START_Y, <(1040 * 32 + 8), <(1050 * 32 + 16)
+start_yh:  .byte >START_Y, >(1040 * 32 + 8), >(1050 * 32 + 16)
+start_ang: .byte 0, 64, 128
+start_col: .byte 13, 12, 1
 .elseif .defined(COAST)
 ; the starting bodies: the player on the beach, a speedboat moored at the
 ; water's edge, a launch and a jet ski at sea, a car on the sand, two walkers
@@ -269,6 +293,9 @@ frame:
         jsr walkers
 .ifdef HOVER
         jsr pilots
+.endif
+.ifdef MARSH
+        jsr captains
 .endif
         jsr PHYS_STEP
 after_step:
@@ -377,6 +404,8 @@ get_in:
         cmp #M_AIR
         beq :+
         cmp #M_PLANE
+        beq :+
+        cmp #M_AIRBOAT
         bne @no
 :       sty camdx+1             ; in: the walker goes, the vehicle is the player's
         jsr PHYS_REMOVE
@@ -397,7 +426,7 @@ get_in:
 @no:    ldx player
         clc
         rts
-mod_of: .byte 0, 0, 0, 1, 2, 0, 2       ; the module a mover needs: none, foot, wheels, hull, heli, thrown, plane
+mod_of: .byte 0, 0, 0, 1, 2, 0, 2, 1    ; the module a mover needs: none, foot, wheels, hull, heli, thrown, plane, airboat
 
 ; use_module: A = 0 ground, 1 water, 2 air -> that physics module at $6000,
 ; unless it is there already.  The body tables above it stay as they are;
@@ -576,6 +605,23 @@ walkers:
         bpl @w
         rts
 ped_ways: .byte IN_LEFT, IN_RIGHT, IN_LEFT, IN_RIGHT, 0, IN_UP, IN_DOWN, IN_LEFT
+
+.ifdef MARSH
+; captains: every boat but the player's holds the throttle, the way it
+; points (the speedboat west into the marsh, which it cannot cross)
+captains:
+        ldx #PHYS_NB-1
+@c:     cpx player
+        beq @n
+        lda pb_mov,x
+        cmp #M_HULL
+        bne @n
+        lda #IN_UP
+        sta pb_in,x
+@n:     dex
+        bpl @c
+        rts
+.endif
 
 .ifdef HOVER
 ; pilots: every helicopter but the player's holds HOVER_Z, climbing when
@@ -1142,6 +1188,9 @@ frame_of:
         beq @veh
         ldy #9
         cmp #M_PLANE
+        beq @veh
+        ldy #12
+        cmp #M_AIRBOAT
         bne @foot
 @veh:   sty veh_k
         lda pb_ang,x
@@ -1185,7 +1234,7 @@ frame_of:
         adc #0
         sta b64_reu+2
         rts
-veh_base: .faraddr SLOT_CARS16, SLOT_BOATS16, SLOT_HELI16, SLOT_PLANE16
+veh_base: .faraddr SLOT_CARS16, SLOT_BOATS16, SLOT_HELI16, SLOT_PLANE16, SLOT_AIRBOAT16
 
 ; ---------------------------------------------------------------------------
 ; hud_update: what the player is doing, into hudbuf
@@ -1268,6 +1317,8 @@ hud_update:
         lda pb_mov,x            ; a car skids; a boat throws up spray
         cmp #M_HULL
         beq @spray
+        cmp #M_AIRBOAT
+        beq @spray
         ldy #3
 :       lda txt_skid,y
         sta hudbuf+35,y
@@ -1314,8 +1365,8 @@ txt_skid:  .byte "SKID"
 txt_alt:   .byte "ALT "
 txt_spray: .byte "SPRAY"
 cls_names: .byte "SEDAN", 0, "SPORTS", 0, "TRUCK", 0, "BIKE", 0, "SPEEDBOAT", 0, "LAUNCH", 0, "JET SKI", 0
-           .byte "HELICOPTER", 0, "PLANE", 0
-cls_off:   .byte 0, 0, 6, 13, 19, 24, 34, 41, 49, 60
+           .byte "HELICOPTER", 0, "PLANE", 0, "AIRBOAT", 0
+cls_off:   .byte 0, 0, 6, 13, 19, 24, 34, 41, 49, 60, 66
 tenths:    .byte "0112334456678899"
 
 ; ---------------------------------------------------------------------------
@@ -1351,6 +1402,12 @@ tape_joy:  .byte 0, IN_UP | IN_RIGHT, IN_FIRE, 0, IN_FIRE, IN_DOWN | IN_FIRE, IN
 ; wrecks, whose blast throws out more
 tape_len:  .byte 40, 6, 1, 1, 100, 30, 40, 50, 1, 1, 25, 2, 5, 1, 150, 0
 tape_joy:  .byte 0, IN_UP, IN_UP | IN_FIRE, 0, IN_UP, 0, IN_DOWN, 0, IN_FIRE, 0, IN_LEFT, IN_RIGHT, 0, IN_FIRE, 0
+.elseif .defined(MARSH)
+; walk south to the airboat and get in; the throttle south through the
+; reeds; a quarter turn east, sliding wide, and on out of the marsh into the
+; sea, past the speedboat pinned at its edge
+tape_len:  .byte 30, 40, 1, 1, 100, 20, 110, 80, 0
+tape_joy:  .byte 0, IN_DOWN, IN_FIRE, 0, IN_UP, IN_UP | IN_LEFT, IN_UP, 0
 .elseif .defined(COAST)
 ; walk east to the water's edge and get into the speedboat (the water module
 ; comes in); out to sea and into the launch; turn away on the propeller's

@@ -28,10 +28,10 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky run-hover run-plane run-debris shot-scroll palette clean check bench
+.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky run-hover run-plane run-debris run-marsh shot-scroll palette clean check bench
 
 # examples/physics's scenes, name:define (the SCENE template below)
-SCENES = boats:COAST sky:SKY hover:HOVER plane:PLANE debris:DEBRIS
+SCENES = boats:COAST sky:SKY hover:HOVER plane:PLANE debris:DEBRIS marsh:MARSH
 SCENE_NAMES = $(foreach s,$(SCENES),$(word 1,$(subst :, ,$(s))))
 SCENE_PRGS = $(foreach n,$(SCENE_NAMES),$(BUILD)/$(n).prg $(BUILD)/$(n)-auto.prg)
 all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(SCENE_PRGS) $(REU)
@@ -88,7 +88,7 @@ $(BUILD)/block.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr $(BUILD)/airboat16.spr
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -233,6 +233,8 @@ $(BUILD)/plane16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py plane $@
 $(BUILD)/planesh16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py planeshadow $@
+$(BUILD)/airboat16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64rot.py airboat $@
 # the air module: the same core assembled with AIR, foot and the helicopter
 $(BUILD)/air.o: modules/physics/air.s $(PHYS_SRCS) include/b64.inc $(BUILD)/phys_tables.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
@@ -257,7 +259,8 @@ run-physics: $(BUILD)/physics.prg $(REU) $(REU8)
 
 # the example's scenes: the same program built with the scene's -D name
 # (docs/PHYSICS.md): boats at the coast (COAST), a helicopter (SKY), shots
-# and a hovering helicopter (HOVER), a plane (PLANE), debris (DEBRIS)
+# and a hovering helicopter (HOVER), a plane (PLANE), debris (DEBRIS), an
+# airboat in the marsh (MARSH)
 define SCENE
 $(BUILD)/$(1)-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -D $(2)=1 -o $$@ $$<

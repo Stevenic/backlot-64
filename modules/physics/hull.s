@@ -7,7 +7,9 @@
 ; speedboat) instead of a fixed amount, so a boat carries its momentum
 ; through a turn and slides out wide.  Pulling back is reverse thrust, not a
 ; brake.  With the throttle off, drag takes a thirty-second of the speed a
-; frame.  The rudder turns it only while water flows past it: half as much
+; frame.  An airboat (M_AIRBOAT) is this mover with the marsh as water: its
+; fan pushes it over the reeds, where it slides a sixteenth.
+; The rudder turns it only while water flows past it: half as much
 ; when slow, and when still only with the throttle held, the propeller's
 ; wash doing the work.  Land is a wall (wall_and / wall_eor: anything but
 ; water).
@@ -218,10 +220,11 @@ drag:
         sta pb_vlh,x
 @done:  rts
 
-; the hull classes' figures, from C_HULL0: speedboat, launch, jet ski
-h_top_l:  .byte     0,   $80,   $80        ; top speed, 8.8: 4.0, 2.5, 4.5
-h_top_h:  .byte     4,     2,     4
-h_acc:    .byte     6,     3,    10
-h_rev:    .byte   $A0,   $80,   $80        ; top speed astern, 1/256 pixel a frame
-h_turn:   .byte     2,     1,     3
-h_lat:    .byte     3,     2,     3        ; the sideways share lost a frame: 1/8, 1/4, 1/8
+; the hull classes' figures, from C_HULL0: speedboat, launch, jet ski, then
+; two not hulls (the helicopter and the plane), then the airboat
+h_top_l:  .byte     0,   $80,   $80,     0,     0,     0     ; top speed, 8.8: 4.0, 2.5, 4.5; 4.0
+h_top_h:  .byte     4,     2,     4,     0,     0,     4
+h_acc:    .byte     6,     3,    10,     0,     0,     7
+h_rev:    .byte   $A0,   $80,   $80,     0,     0,   $60     ; top speed astern, 1/256 pixel a frame
+h_turn:   .byte     2,     1,     3,     0,     0,     3
+h_lat:    .byte     3,     2,     3,     1,     1,     4     ; the sideways share lost a frame: 1/8, 1/4, 1/8; 1/16

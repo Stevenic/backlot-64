@@ -31,6 +31,7 @@ M_WHEELS        = 2
 M_HULL          = 3
 M_AIR           = 4
 M_PLANE         = 6
+M_AIRBOAT       = 7
 
 C_WALKER        = 0                     ; classes (docs/PHYSICS.md section 4)
 C_SEDAN         = 1
@@ -42,6 +43,7 @@ C_LAUNCH        = 6
 C_JETSKI        = 7
 C_HELI          = 8
 C_PLANE         = 9
+C_AIRBOAT       = 10
 
 ST_SKID         = $01                   ; pb_st bits
 ST_DOWN         = $02

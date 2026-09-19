@@ -108,6 +108,20 @@ DEMOS = [
         "note": "",
     },
     {
+        "key": "marsh", "prg": "build/marsh-auto.prg", "skip": 20, "frames": 380, "every": 1,
+        "title": "An airboat in the marsh",
+        "source": "modules/physics", "run": "make run-marsh",
+        "text": "A marsh is water with its shallow bit set: a wall to a boat, water to an airboat. The airboat runs "
+                "south through the reeds, slides wide through a quarter turn and on out into the sea, past a "
+                "speedboat whose captain holds its throttle into the marsh and gets nowhere: it is pinned against "
+                "the edge of the reeds.",
+        "facts": ["the airboat wholly in the marsh for 274 frames, then at sea",
+                  "the speedboat pinned at the marsh's edge", "no body ever inside its own walls",
+                  "no frames lost in 400"],
+        "check": "marsh.crossed, marsh.pinned, marsh.walls",
+        "note": "",
+    },
+    {
         "key": "debris", "prg": "build/debris-auto.prg", "skip": 20, "frames": 540, "every": 1,
         "title": "Debris",
         "source": "modules/collision", "run": "make run-debris",

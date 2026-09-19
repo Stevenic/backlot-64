@@ -12,7 +12,7 @@ the physics module keeps (docs/PHYSICS.md).
 Colours: '2' the sprite's own colour (the body), '1' multicolour 0
 (windows, tyres: black in the examples), '3' multicolour 1 (lamps: white).
 
-usage: b64rot.py car|boat|heli|helishadow|plane|planeshadow <out.spr> [--headings 16] [--show]
+usage: b64rot.py car|boat|heli|helishadow|plane|planeshadow|airboat <out.spr> [--headings 16] [--show]
 """
 import math
 import os
@@ -92,13 +92,29 @@ def plane(u, v):
     return "."
 
 
+def airboat(u, v):
+    """The colour at (u, v): an airboat, a flat blunt hull 18 pixels long and
+    10 wide, the pilot's seat high in the middle, the fan's cage at the stern."""
+    au, av = abs(u), abs(v)
+    if -9.5 <= u <= -5.5 and av <= 4.8:
+        r = ((u + 7.5) ** 2 + v * v) ** 0.5
+        if r >= 3.6 or au < 0 or abs(u + 7.5) < 0.7 or av < 0.7:
+            return "1"                           # the fan's cage and blades
+        return "."
+    if -5.5 < u <= 9.0 and av <= 5.0 and not (u > 7.0 and av > 3.5):
+        if -2.0 <= u <= 1.0 and av <= 1.6:
+            return "3"                           # the seat
+        return "2"
+    return "."
+
+
 def silhouette(shape):
     """The same outline in one colour: a shadow on the ground."""
     return lambda u, v: "." if shape(u, v) == "." else "2"
 
 
 SHAPES = {"car": car, "boat": boat, "heli": heli, "helishadow": silhouette(heli),
-          "plane": plane, "planeshadow": silhouette(plane)}
+          "plane": plane, "planeshadow": silhouette(plane), "airboat": airboat}
 
 
 def frames(shape, headings):

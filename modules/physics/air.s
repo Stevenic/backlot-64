@@ -35,12 +35,12 @@ AIR = 1
 .include "plane.s"
 
 ; the movers this module carries, by mover number (the address less one)
-mover_tab:  .word hold-1, foot-1, hold-1, hold-1, heli-1, hold-1, plane-1
+mover_tab:  .word hold-1, foot-1, hold-1, hold-1, heli-1, hold-1, plane-1, hold-1
 ; what each mover counts as a wall: (properties & and) ^ eor, non-zero; for
 ; an aircraft (wall_alt bit 7) a solid metatile standing higher than it
-wall_and:   .byte 0, WALL, WALL, P_WATER, 0, WALL, 0
-wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0, 0
-wall_alt:   .byte 0, 0, 0, 0, $80, 0, $80
+wall_and:   .byte 0, WALL, WALL, P_WATER | P_SHALLOW, 0, WALL, 0, P_WATER
+wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0, 0, P_WATER
+wall_alt:   .byte 0, 0, 0, 0, $80, 0, $80, 0
 
 .include "tables.s"
 .include "private.s"

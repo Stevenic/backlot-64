@@ -1,4 +1,4 @@
-; backlot-64 physics, water: on foot and in boats (docs/PHYSICS.md).
+; backlot-64 physics, water: on foot, in boats and airboats (docs/PHYSICS.md).
 ;
 ; A pinned module (pinned.cfg), loaded into the game's module region at
 ; $6000 in place of the ground module when the player takes to the water,
@@ -7,6 +7,8 @@
 ; swap keeps every body where it was.  Cars hold still while this module is
 ; in (they have no mover here) and take up from rest when the ground module
 ; returns.
+
+WATER = 1
 
 .include "b64.inc"
 .include "defs.inc"
@@ -33,10 +35,10 @@
 .include "hull.s"
 
 ; the movers this module carries, by mover number (the address less one)
-mover_tab:  .word hold-1, foot-1, hold-1, hull-1, hold-1, hold-1, hold-1
+mover_tab:  .word hold-1, foot-1, hold-1, hull-1, hold-1, hold-1, hold-1, hull-1
 ; what each mover counts as a wall: (properties & and) ^ eor, non-zero
-wall_and:   .byte 0, WALL, WALL, P_WATER, 0, WALL, WALL
-wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0, 0
+wall_and:   .byte 0, WALL, WALL, P_WATER | P_SHALLOW, 0, WALL, WALL, P_WATER
+wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0, 0, P_WATER
 
 .include "tables.s"
 .include "private.s"

@@ -587,12 +587,13 @@ def module_scene(port, prg, frames, swaps, extra=None, col=False):
 def scene_map():
     """The world map, the tileset's properties and heights (storeys of 8
     pixels), and a test of a body's box against what its mover counts as a
-    wall: land for a boat; a solid metatile standing higher than it for an
-    aircraft; walls and water for feet and wheels."""
+    wall: land and marsh for a boat, land for an airboat; a solid metatile
+    standing higher than it for an aircraft; walls and water for feet and
+    wheels."""
     world = open("build/world.map", "rb").read()
     ts = open("build/bellamar_day.bin", "rb").read()
     props, heights = ts[0x2800:0x2900], ts[0x2900:0x2A00]
-    HW = [3, 7, 7, 9, 4, 7, 9, 4, 8, 8]
+    HW = [3, 7, 7, 9, 4, 7, 9, 4, 8, 8, 7]
 
     def cells(b):
         h = HW[b["cls"]]
@@ -603,7 +604,9 @@ def scene_map():
     def in_wall(b):
         for m in cells(b):
             p = props[m]
-            if b["mov"] == 3:
+            if b["mov"] == 3:                    # a boat: land and marsh (the shallow bit)
+                bad = not p & 0x40 or p & 0x01
+            elif b["mov"] == 7:                  # an airboat: land
                 bad = not p & 0x40
             elif b["mov"] in (4, 6):
                 bad = p & 0x80 and heights[m] * 8 > b["z"]
@@ -835,6 +838,38 @@ def debris(R, port):
     R.measure("debris.frames_lost", d["lost"])
 
 
+def marsh(R, port):
+    """Airboats and marsh, in examples/physics built on the sand beside a
+    marsh (-D MARSH), in the water module from the start: walk to the
+    airboat and get in; south through the reeds, a quarter turn east and on
+    out into the sea.  A speedboat at sea holds its throttle west into the
+    marsh.  No body in its walls, the marsh being one for the speedboat and
+    water for the airboat; the airboat is in the marsh and then clear of it
+    at sea; the speedboat is stopped at the marsh's edge; two runs alike."""
+    in_wall, _, props, _, world = scene_map()
+    d = module_scene(port, "build/marsh-auto.prg", 400, 0)
+    walls = sum(1 for _, bs, _ in d["frames"] for b in bs.values() if in_wall(b))
+
+    def marsh_corners(b):
+        return sum(1 for cx in (b["x"] - 7, b["x"] + 7) for cy in (b["y"] - 7, b["y"] + 7)
+                   if props[world[((cy >> 5) << 11) | (cx >> 5)]] & 0x41 == 0x41)
+    boat = [next(b for b in bs.values() if b["mov"] == 7) for _, bs, _ in d["frames"]]
+    in_marsh = sum(1 for b in boat if marsh_corners(b) == 4)
+    at_sea = sum(1 for b in boat if marsh_corners(b) == 0 and b["x"] > 1712 * 32)
+    spd = [next(b for b in bs.values() if b["mov"] == 3) for _, bs, _ in d["frames"]]
+    pinned = sum(1 for b in spd if b["st"] & 8 and b["x"] - 7 <= 1712 * 32 + 1)
+    R.check("marsh.walls", walls == 0, f"400 frames of the tape: {walls} body-frames with a corner in its mover's walls "
+            "(the marsh a wall to a boat, water to an airboat)")
+    R.check("marsh.crossed", in_marsh > 0 and at_sea > 0, f"the airboat wholly in the marsh for {in_marsh} frames, "
+            f"clear of it at sea for {at_sea}")
+    R.check("marsh.pinned", pinned > 0, f"the speedboat against the marsh's edge in {pinned} frames")
+    R.check("marsh.repeat", d["finals"][0] == d["finals"][1], "two runs of the tape end in the same state"
+            if d["finals"][0] == d["finals"][1] else "two runs of the tape end in different states")
+    R.measure("marsh.step_median", d["costs"][len(d["costs"]) // 2])
+    R.measure("marsh.step_worst", d["costs"][-1])
+    R.measure("marsh.frames_lost", d["lost"])
+
+
 def mux_instrument(R, port):
     """The multiplexer's hardware test (tools/b64muxhw.py) on VICE, both test
     builds: frozen snapshots judged entry by entry from the log clock, with
@@ -942,7 +977,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover), ("plane", plane), ("debris", debris)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover), ("plane", plane), ("debris", debris), ("marsh", marsh)):
             if want(name):
                 guarded(name, fn, port)
 
