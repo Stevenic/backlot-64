@@ -101,10 +101,17 @@ footer p { margin: 0; max-width: 72ch; }
     <article id="physics">
       <div class="screen"><video src="video/physics.mp4" poster="video/physics.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="On foot and at the wheel, recorded in VICE"></video></div>
       <h2>On foot and at the wheel</h2>
-      <p>The physics module, pinned in memory while play runs. A walker gets into a sedan and drives it into a parked sports car, which is shoved into a truck: every one of them is a physics body with a mass, and a collision shares the change in velocity by mass. Cars keep their speed along and across their heading, so a hard turn or the handbrake makes them slide; walls stop them with a bounce and damage; the surface under each body sets its grip and drag.</p>
-      <ul class="facts"><li>no body ever in a wall over 690 frames, judged from the world map</li><li>the first ram: momentum 3,936 before, 4,032 after, the engine&#x27;s push 64</li><li>the abandoned car comes to rest and sleeps</li><li>two runs of the tape end in the same state</li></ul>
-      <p class="note"><strong>Known limits.</strong> At 1 MHz this demo loses about 7 percent of frames: the physics step costs about 4,500 cycles for nine bodies and is due a cost pass. The status row flickers for the reason given under traffic.</p>
-      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/modules/physics"><code>modules/physics</code></a></span><span>run <code>make run-physics</code></span><span>checked by <code>physics.walls, physics.momentum, physics.rest, physics.repeat</code></span></div>
+      <p>The ground physics module, pinned in memory while play runs. A walker gets into a sedan and drives it into a parked sports car, which is shoved into a truck: every one of them is a physics body with a mass, and a collision shares the change in velocity by mass. Cars keep their speed along and across their heading, so a hard turn or the handbrake makes them slide. Then, on foot again, the player fires, and tosses two grenades that arc, bounce, roll to a stop and go off, pushing and knocking down whoever is in reach.</p>
+      <ul class="facts"><li>no body ever in a wall over 800 frames, judged from the world map</li><li>the first ram: momentum 3,936 before, 4,032 after, the engine&#x27;s push 64</li><li>no shot or grenade ever inside a wall</li><li>two runs of the tape end in the same state</li></ul>
+      <p class="note"><strong>Known limits.</strong> At 1 MHz this demo loses 5 percent of frames: the step costs 6,400 cycles at the median for nine bodies, and 15,100 in a three-car pile-up. The status row flickers for the reason given under traffic.</p>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/modules/physics"><code>modules/physics</code></a></span><span>run <code>make run-physics</code></span><span>checked by <code>physics.*, collision.shots, collision.thrown</code></span></div>
+    </article>
+    <article id="boats">
+      <div class="screen"><video src="video/boats.mp4" poster="video/boats.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="Boats, and a module swap, recorded in VICE"></video></div>
+      <h2>Boats, and a module swap</h2>
+      <p>The same example at the coast, where the road meets the sea. The walker gets into a speedboat, and the water physics module is fetched over the ground module in one 6 KB DMA; every body stays where it was, because the body tables live above what the fetch overwrites. A boat has no grip: its sideways speed fades by a share each frame, so it slides wide through a turn and throws spray. It rams the launch, turns away on its propeller&#x27;s wash, runs into the beach and stops against it; the player steps out onto the sand, and the ground module comes back.</p>
+      <ul class="facts"><li>2 module swaps: body tables byte for byte the same before and after</li><li>no boat ever touches land, no walker ever enters the water</li><li>the speedboat&#x27;s sideways speed peaks at 1.5 pixels a frame in the turn</li><li>2 frames lost in 700, the swaps included</li></ul>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/modules/physics"><code>modules/physics</code></a></span><span>run <code>make run-boats</code></span><span>checked by <code>boats.swap, boats.walls, boats.slide, boats.shore, boats.ram, boats.landed</code></span></div>
     </article>
     <article id="scroller">
       <div class="screen"><video src="video/scroller.mp4" poster="video/scroller.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="A 4 MB world, scrolled, recorded in VICE"></video></div>
@@ -143,7 +150,7 @@ footer p { margin: 0; max-width: 72ch; }
     </article>
   </div>
   <footer>
-    <p>Recorded 2026-09-18 from commit <a href="https://github.com/Stevenic/backlot-64/commit/ff1e7e7180217c7b4a028b29cef874367071872d"><code>ff1e7e7</code></a> with <code>make pages</code> (<code>tools/b64site.py</code>, <code>tools/b64video.py</code>).</p>
+    <p>Recorded 2026-09-18 from commit <a href="https://github.com/Stevenic/backlot-64/commit/663e16ee1c191194de3d5457f076176600c02913"><code>663e16e</code></a> with <code>make pages</code> (<code>tools/b64site.py</code>, <code>tools/b64video.py</code>).</p>
     <p>backlot-64 is MIT licensed. The techniques it borrows, and where it departs from them, are credited in CREDITS.md and docs/PRIOR-ART.md.</p>
   </footer>
 </main>
