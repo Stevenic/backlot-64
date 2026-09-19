@@ -95,8 +95,16 @@ footer p { margin: 0; max-width: 72ch; }
       <h2>Traffic, with the player&#x27;s car in it</h2>
       <p>The light-green car is the player&#x27;s, on hardware sprite 0, which the multiplexer never touches. Up to 24 others drive Bellamar&#x27;s grid: they keep their lanes by reading the map&#x27;s road bits, turn at crossings, stop at the lights, queue, and stay out of a crossing whose exit is jammed. A raster line can show eight sprites and the player&#x27;s car is one, so traffic may put at most seven on any line; a governor counts every car against the lines it covers, so an east-west street carries at most seven moving cars besides the player.</p>
       <ul class="facts"><li>0 sprites dropped by the multiplexer in 3,000 frames</li><li>at most 7 traffic sprites on any line</li><li>12 to 14 cars live, 10 to 12 on screen</li><li>1 to 5 percent of frames lost at 1 MHz, by route</li></ul>
-      <p class="note"><strong>Known fault.</strong> The status row flickers: the split that shows it sometimes lands a few cycles late. A known engine fault, recorded with its measurements, and the next one to fix.</p>
+      <p class="note"><strong>Known limits.</strong> The status row flickers: the split that shows it sometimes lands a few cycles late. A known engine fault, recorded with its measurements, and the next one to fix.</p>
       <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/examples/traffic"><code>examples/traffic</code></a></span><span>run <code>make run-traffic</code></span><span>checked by <code>traffic.auto, traffic.by_hand, traffic.frames_lost</code></span></div>
+    </article>
+    <article id="physics">
+      <div class="screen"><video src="video/physics.mp4" poster="video/physics.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="On foot and at the wheel, recorded in VICE"></video></div>
+      <h2>On foot and at the wheel</h2>
+      <p>The physics module, pinned in memory while play runs. A walker gets into a sedan and drives it into a parked sports car, which is shoved into a truck: every one of them is a physics body with a mass, and a collision shares the change in velocity by mass. Cars keep their speed along and across their heading, so a hard turn or the handbrake makes them slide; walls stop them with a bounce and damage; the surface under each body sets its grip and drag.</p>
+      <ul class="facts"><li>no body ever in a wall over 690 frames, judged from the world map</li><li>the first ram: momentum 3,936 before, 4,032 after, the engine&#x27;s push 64</li><li>the abandoned car comes to rest and sleeps</li><li>two runs of the tape end in the same state</li></ul>
+      <p class="note"><strong>Known limits.</strong> At 1 MHz this demo loses about 7 percent of frames: the physics step costs about 4,500 cycles for nine bodies and is due a cost pass. The status row flickers for the reason given under traffic.</p>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/modules/physics"><code>modules/physics</code></a></span><span>run <code>make run-physics</code></span><span>checked by <code>physics.walls, physics.momentum, physics.rest, physics.repeat</code></span></div>
     </article>
     <article id="scroller">
       <div class="screen"><video src="video/scroller.mp4" poster="video/scroller.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="A 4 MB world, scrolled, recorded in VICE"></video></div>
@@ -135,7 +143,7 @@ footer p { margin: 0; max-width: 72ch; }
     </article>
   </div>
   <footer>
-    <p>Recorded 2026-09-18 from commit <a href="https://github.com/Stevenic/backlot-64/commit/96118ed4bf3a098a91fdcb8a604713d177334e22"><code>96118ed</code></a> with <code>make pages</code> (<code>tools/b64site.py</code>, <code>tools/b64video.py</code>).</p>
+    <p>Recorded 2026-09-18 from commit <a href="https://github.com/Stevenic/backlot-64/commit/ff1e7e7180217c7b4a028b29cef874367071872d"><code>ff1e7e7</code></a> with <code>make pages</code> (<code>tools/b64site.py</code>, <code>tools/b64video.py</code>).</p>
     <p>backlot-64 is MIT licensed. The techniques it borrows, and where it departs from them, are credited in CREDITS.md and docs/PRIOR-ART.md.</p>
   </footer>
 </main>
