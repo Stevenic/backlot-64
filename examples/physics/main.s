@@ -23,6 +23,10 @@
 ; the same calls work whichever is in.  A boat steers like a car without
 ; grip; down is reverse thrust.
 ;
+; Assembled with -D HOVER=1 (make run-hover) it starts in the air module,
+; a helicopter holding 32 pixels up across the road: shots and a grenade
+; pass beneath it until it settles.
+;
 ; Assembled with -D SKY=1 (make run-sky) it starts on the pavement with a
 ; helicopter on the road; getting in fetches the air module.  Buildings are
 ; walls to it only below their height (the tileset's heights table).
@@ -36,11 +40,21 @@
 .export game_main
 
 PCX     = 160                   ; the player's place on the playfield
+.ifdef HOVER
+PCY     = 124                   ; lower: the scene happens north of the player
+.else
 PCY     = 92
+.endif
 .ifdef SKY
 START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000,
 START_Y = 1001 * 32 + 16        ; a six-storey block south of it (rows 1002-1005)
 ROAD_Y  = 1000 * 32 + 16
+.elseif .defined(HOVER)
+START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000;
+START_Y = 1001 * 32 + 16        ; the helicopter lifts off the pavement across it
+HELI_Y  = 999 * 32 + 24
+HOVER_Z = 32                    ; the height it holds, pixels
+HOVER_UNTIL = 330               ; the tick it lets go and settles
 .elseif .defined(COAST)
 START_X = 1700 * 32 + 16        ; the beach where the road at metatile row 1000 meets the sea
 START_Y = 1000 * 32 + 16
@@ -103,6 +117,10 @@ game_main:
         sta phys_tiles+1
         lda #^SLOT_TILESET0
         sta phys_tiles+2
+.ifdef HOVER
+        lda #2                  ; this scene starts in the air module
+        jsr use_module
+.endif
         lda #$5D
         sta rnd
         lda #0
@@ -177,6 +195,17 @@ start_yl:  .byte <START_Y, <ROAD_Y, <(ROAD_Y + 8), <START_Y, <START_Y
 start_yh:  .byte >START_Y, >ROAD_Y, >(ROAD_Y + 8), >START_Y, >START_Y
 start_ang: .byte 0, 0, 0, 0, 0
 start_col: .byte 13, 14, 2, 4, 3
+.elseif .defined(HOVER)
+; the starting bodies: the player, a helicopter across the road, which holds
+; 32 pixels up and then settles, and a car parked along the road
+start_mov: .byte M_FOOT, M_AIR, M_WHEELS, 0
+start_cls: .byte C_WALKER, C_HELI, C_SEDAN
+start_xl:  .byte <START_X, <START_X, <(START_X + 90)
+start_xh:  .byte >START_X, >START_X, >(START_X + 90)
+start_yl:  .byte <START_Y, <HELI_Y, <(1000 * 32 + 24)
+start_yh:  .byte >START_Y, >HELI_Y, >(1000 * 32 + 24)
+start_ang: .byte 0, 0, 0
+start_col: .byte 13, 14, 2
 .elseif .defined(COAST)
 ; the starting bodies: the player on the beach, a speedboat moored at the
 ; water's edge, a launch and a jet ski at sea, a car on the sand, two walkers
@@ -208,6 +237,9 @@ frame:
 :       jsr input
         jsr control
         jsr walkers
+.ifdef HOVER
+        jsr pilots
+.endif
         jsr PHYS_STEP
         jsr shot_step
         jsr follow
@@ -506,6 +538,34 @@ walkers:
         bpl @w
         rts
 ped_ways: .byte IN_LEFT, IN_RIGHT, IN_LEFT, IN_RIGHT, 0, IN_UP, IN_DOWN, IN_LEFT
+
+.ifdef HOVER
+; pilots: every helicopter but the player's holds HOVER_Z, climbing when
+; under it and settling when over, until HOVER_UNTIL; then it settles
+pilots:
+        ldx #PHYS_NB-1
+@p:     cpx player
+        beq @n
+        lda pb_mov,x
+        cmp #M_AIR
+        bne @n
+        lda #0
+        ldy tick+1
+        cpy #>HOVER_UNTIL
+        bcc :+
+        bne @set
+        ldy tick
+        cpy #<HOVER_UNTIL
+        bcs @set
+:       ldy pb_zh,x
+        cpy #HOVER_Z
+        bcs @set
+        lda #IN_FIRE
+@set:   sta pb_in,x
+@n:     dex
+        bpl @p
+        rts
+.endif
 
 random:
         lda rnd
@@ -1136,7 +1196,14 @@ tenths:    .byte "0112334456678899"
 ; ---------------------------------------------------------------------------
 ; the tape (AUTODRIVE): frames, then the stick
 .ifdef AUTODRIVE
-.ifdef SKY
+.ifdef HOVER
+; wait for the helicopter to lift; face north, three shots at it, which pass
+; beneath; a grenade under it, whose blast does not reach it; wait for it to
+; settle on the pavement; three shots, which hit it
+tape_len:  .byte 60, 2, 10, 1, 20, 1, 20, 1, 30, 1, 100, 180, 1, 20, 1, 20, 1, 60, 0
+tape_joy:  .byte 0, IN_UP, 0, IN_UP | IN_FIRE, 0, IN_UP | IN_FIRE, 0, IN_UP | IN_FIRE, 0, IN_FIRE, 0, 0
+           .byte IN_UP | IN_FIRE, 0, IN_UP | IN_FIRE, 0, IN_UP | IN_FIRE, 0
+.elseif .defined(SKY)
 ; walk to the helicopter and get in (the air module comes in); climb, fly
 ; south over the block and brake; settle onto its roof; climb again, fly
 ; back north to the road and settle on it; get out (the ground module comes

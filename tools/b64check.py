@@ -516,13 +516,14 @@ def physics(R, port):
     R.measure("physics.frames_lost", lost)
 
 
-def module_scene(port, prg, frames, swaps):
+def module_scene(port, prg, frames, swaps, extra=None):
     """Run examples/physics built for a scene that swaps physics modules
     (the coast, the sky), four times: once a frame at a time, reading every
     body each frame; again for the final state; once stopped at each swap
     (the body tables before and after the fetch, and the module in place);
     and once timing every step through the jump table at $6009, so either
-    module is timed.  Returns what the judges need."""
+    module is timed.  extra(v, syms), if given, reads more each frame of the
+    first run.  Returns what the judges need."""
     import re
     syms = {m.group(1): int(m.group(2), 16)
             for f in ("build/physics_syms.inc", "build/collision_syms.inc")
@@ -567,7 +568,7 @@ def module_scene(port, prg, frames, swaps):
             for f in range(frames):
                 v.frames(1)
                 if not run:
-                    out["frames"].append((v.mem("player")[0], bodies(v)))
+                    out["frames"].append((v.mem("player")[0], bodies(v), extra(v, syms) if extra else None))
             if not run:
                 out["lost"] = frames - (v.word("tick") - t0)
                 out["end"] = (v.mem("player")[0], v.mem("module")[0])
@@ -626,12 +627,12 @@ def boats(R, port):
     end alike.  And the step's cost and the frames lost."""
     in_wall, _, _, _, _ = scene_map()
     d = module_scene(port, "build/boats-auto.prg", 700, 2)
-    walls = sum(1 for _, bs in d["frames"] for b in bs.values() if in_wall(b))
-    boat = [bs[p] for p, bs in d["frames"] if p in bs and bs[p]["mov"] == 3]
+    walls = sum(1 for _, bs, _ in d["frames"] for b in bs.values() if in_wall(b))
+    boat = [bs[p] for p, bs, _ in d["frames"] if p in bs and bs[p]["mov"] == 3]
     slide = max((abs(b["vt"]) for b in boat), default=0)
     spray = sum(1 for b in boat if b["st"] & 1)
     shore = sum(1 for b in boat if b["st"] & 8)
-    rammed = any(b["cls"] == 6 and b["hit"] for _, bs in d["frames"] for b in bs.values())
+    rammed = any(b["cls"] == 6 and b["hit"] for _, bs, _ in d["frames"] for b in bs.values())
     p, mod = d["end"]
     last = d["finals"][0][p]
     landed = (last["mov"], mod, in_wall(last)) == (1, 0, False)
@@ -669,8 +670,8 @@ def sky(R, port):
     module in; two runs end alike.  And the step's cost."""
     in_wall, over_building, _, _, _ = scene_map()
     d = module_scene(port, "build/sky-auto.prg", 700, 2)
-    walls = sum(1 for _, bs in d["frames"] for b in bs.values() if in_wall(b))
-    heli = [bs[p] for p, bs in d["frames"] if p in bs and bs[p]["mov"] == 4]
+    walls = sum(1 for _, bs, _ in d["frames"] for b in bs.values() if in_wall(b))
+    heli = [bs[p] for p, bs, _ in d["frames"] if p in bs and bs[p]["mov"] == 4]
     crossed = sum(1 for b in heli if over_building(b) and b["z"] > 48)
     roof = sum(1 for b in heli if over_building(b) and b["z"] == 48 and b["vz"] == 0)
     top = max((b["z"] for b in heli), default=0)
@@ -694,6 +695,50 @@ def sky(R, port):
     R.measure("sky.step_median", d["costs"][len(d["costs"]) // 2])
     R.measure("sky.step_worst", d["costs"][-1])
     R.measure("sky.frames_lost", d["lost"])
+
+
+def hover(R, port):
+    """Shots and height, in examples/physics built with a hovering
+    helicopter (-D HOVER), in the air module from the start: the player
+    fires three shots at a helicopter holding 32 pixels up across the road,
+    which pass beneath it, and tosses a grenade under it, whose blast does
+    not reach that high; the helicopter settles, and the same shots hit it.
+    Every frame, while it is 8 pixels or more up, it is never hit, and shots
+    are seen inside its footprint; a blast goes off within reach of it
+    while it is 16 or more up, and it is not marked; on the ground it is
+    hit.  No body in its walls; two runs alike; the cost."""
+    in_wall, _, _, _, _ = scene_map()
+
+    def shots(v, syms):
+        on = v.mem(syms["sh_on"], 8)
+        xs = [a | b << 8 for a, b in zip(v.mem(syms["sh_xl"], 8), v.mem(syms["sh_xh"], 8))]
+        ys = [a | b << 8 for a, b in zip(v.mem(syms["sh_yl"], 8), v.mem(syms["sh_yh"], 8))]
+        fx = (v.mem(syms["fx_t"])[0], v.mem(syms["fx_k"])[0], v.word(syms["fx_x"]), v.word(syms["fx_y"]))
+        return [(x, y) for k, (x, y) in enumerate(zip(xs, ys)) if on[k]], fx
+    d = module_scene(port, "build/hover-auto.prg", 600, 0, shots)
+    walls = sum(1 for _, bs, _ in d["frames"] for b in bs.values() if in_wall(b))
+    up_hits = beneath = blasts = marked = down_hits = 0
+    for _, bs, (sh, fx) in d["frames"]:
+        h = next(b for b in bs.values() if b["mov"] == 4)
+        if h["z"] >= 8:
+            up_hits += bool(h["hit"])
+            beneath += sum(1 for x, y in sh if abs(x - h["x"]) <= 8 and abs(y - h["y"]) <= 8)
+        elif h["z"] == 0:
+            down_hits += bool(h["hit"])
+        if fx[0] == 12 and fx[1] == 2 and abs(fx[2] - h["x"]) < 40 and abs(fx[3] - h["y"]) < 40 and h["z"] >= 16:
+            blasts += 1
+            marked += bool(h["hit"])
+    R.check("hover.walls", walls == 0, f"600 frames of the tape: {walls} body-frames with a corner in its mover's walls")
+    R.check("hover.beneath", up_hits == 0 and beneath > 0, f"while the helicopter was up: shots inside its footprint in "
+            f"{beneath} frames, {up_hits} frames hit")
+    R.check("hover.blast", blasts > 0 and marked == 0, f"{blasts} blasts within reach while it was 16 pixels or more up, "
+            f"{marked} of them marking it")
+    R.check("hover.down", down_hits > 0, f"on the ground it was hit in {down_hits} frames")
+    R.check("hover.repeat", d["finals"][0] == d["finals"][1], "two runs of the tape end in the same state"
+            if d["finals"][0] == d["finals"][1] else "two runs of the tape end in different states")
+    R.measure("hover.step_median", d["costs"][len(d["costs"]) // 2])
+    R.measure("hover.step_worst", d["costs"][-1])
+    R.measure("hover.frames_lost", d["lost"])
 
 
 def mux_instrument(R, port):
@@ -803,7 +848,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover)):
             if want(name):
                 guarded(name, fn, port)
 

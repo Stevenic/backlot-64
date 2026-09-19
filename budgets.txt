@@ -95,3 +95,6 @@ boats.frames_lost               6   #     2   of 700, the two module swaps inclu
 sky.step_median              3350   #  3159   phys_step with a helicopter, over all 700 steps of the tape, either module in
 sky.step_worst               7050   #  6690
 sky.frames_lost                 6   #     2   of 700, the two module swaps included
+hover.step_median            1950   #  1824   phys_step, a hovering helicopter, a car and the player, over 600 steps
+hover.step_worst             2750   #  2605
+hover.frames_lost               2   #     0   of 600

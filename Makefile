@@ -28,9 +28,13 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky shot-scroll palette clean check bench
+.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky run-hover shot-scroll palette clean check bench
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/boats.prg $(BUILD)/boats-auto.prg $(BUILD)/sky.prg $(BUILD)/sky-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
+# examples/physics's scenes, name:define (the SCENE template below)
+SCENES = boats:COAST sky:SKY hover:HOVER
+SCENE_NAMES = $(foreach s,$(SCENES),$(word 1,$(subst :, ,$(s))))
+SCENE_PRGS = $(foreach n,$(SCENE_NAMES),$(BUILD)/$(n).prg $(BUILD)/$(n)-auto.prg)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(SCENE_PRGS) $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -247,29 +251,22 @@ $(BUILD)/physics-auto.prg: $(ENGINE_OBJS) $(BUILD)/physics-auto.o $(CFG)
 run-physics: $(BUILD)/physics.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/physics.prg
 
-# the same example at the coast (-D COAST): boats, and the module swap
-$(BUILD)/boats-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
-	$(AS) -g -t c64 $(INC) -D COAST=1 -o $@ $<
-$(BUILD)/boats-auto.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
-	$(AS) -g -t c64 $(INC) -D COAST=1 -D AUTODRIVE=1 -o $@ $<
-$(BUILD)/boats.prg: $(ENGINE_OBJS) $(BUILD)/boats-demo.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/boats-demo.o -Ln $(BUILD)/boats.lbl
-$(BUILD)/boats-auto.prg: $(ENGINE_OBJS) $(BUILD)/boats-auto.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/boats-auto.o -Ln $(BUILD)/boats-auto.lbl
-run-boats: $(BUILD)/boats.prg $(REU) $(REU8)
-	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/boats.prg
-
-# and in the city with a helicopter (-D SKY): the air module
-$(BUILD)/sky-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
-	$(AS) -g -t c64 $(INC) -D SKY=1 -o $@ $<
-$(BUILD)/sky-auto.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
-	$(AS) -g -t c64 $(INC) -D SKY=1 -D AUTODRIVE=1 -o $@ $<
-$(BUILD)/sky.prg: $(ENGINE_OBJS) $(BUILD)/sky-demo.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/sky-demo.o -Ln $(BUILD)/sky.lbl
-$(BUILD)/sky-auto.prg: $(ENGINE_OBJS) $(BUILD)/sky-auto.o $(CFG)
-	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/sky-auto.o -Ln $(BUILD)/sky-auto.lbl
-run-sky: $(BUILD)/sky.prg $(REU) $(REU8)
-	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/sky.prg
+# the example's scenes: the same program built with the scene's -D name
+# (docs/PHYSICS.md): boats at the coast (COAST), a helicopter (SKY), shots
+# and a hovering helicopter (HOVER)
+define SCENE
+$(BUILD)/$(1)-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D $(2)=1 -o $$@ $$<
+$(BUILD)/$(1)-auto.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D $(2)=1 -D AUTODRIVE=1 -o $$@ $$<
+$(BUILD)/$(1).prg: $(ENGINE_OBJS) $(BUILD)/$(1)-demo.o $(CFG)
+	$(LD) -C $(CFG) -o $$@ $(BUILD)/b64_core.o $$(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/$(1)-demo.o -Ln $(BUILD)/$(1).lbl
+$(BUILD)/$(1)-auto.prg: $(ENGINE_OBJS) $(BUILD)/$(1)-auto.o $(CFG)
+	$(LD) -C $(CFG) -o $$@ $(BUILD)/b64_core.o $$(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/$(1)-auto.o -Ln $(BUILD)/$(1)-auto.lbl
+run-$(1): $(BUILD)/$(1).prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/$(1).prg
+endef
+$(foreach s,$(SCENES),$(eval $(call SCENE,$(word 1,$(subst :, ,$(s))),$(word 2,$(subst :, ,$(s))))))
 
 run-traffic: $(BUILD)/traffic.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/traffic.prg

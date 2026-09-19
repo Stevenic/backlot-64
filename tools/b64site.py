@@ -94,6 +94,20 @@ DEMOS = [
         "note": "",
     },
     {
+        "key": "hover", "prg": "build/hover-auto.prg", "skip": 20, "frames": 480, "every": 1,
+        "title": "Shots, blasts and height",
+        "source": "modules/collision", "run": "make run-hover",
+        "text": "Every question the collision module answers is asked at a height, and a shot flies at its firer's. "
+                "A helicopter lifts off across the road and holds 32 pixels up; three shots from the pavement pass "
+                "beneath it and stop at the building beyond, and a grenade goes off under it without reaching it. "
+                "When it settles onto the pavement, the same shots hit it.",
+        "facts": ["never hit while 8 pixels or more up, though shots cross its footprint",
+                  "a blast within reach does not mark it at 16 pixels up", "hit three times on the ground",
+                  "no frames lost in 600"],
+        "check": "hover.beneath, hover.blast, hover.down",
+        "note": "",
+    },
+    {
         "key": "scroller", "prg": "build/scroll-auto.prg", "skip": 150, "frames": 600, "every": 1,
         "title": "A 4 MB world, scrolled",
         "source": "examples/scroll", "run": "make run-scroll",

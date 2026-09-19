@@ -14,7 +14,7 @@
 .include "defs.inc"
 
 .export col_init, col_line, col_point, col_box, col_tile, col_near, shot_fire, shot_step
-.export col_x0, col_y0, col_x1, col_y1, col_skip, col_mask, col_body, col_hx, col_hy, col_bits
+.export col_x0, col_y0, col_x1, col_y1, col_skip, col_mask, col_body, col_hx, col_hy, col_bits, col_z
 .export sh_on, sh_xl, sh_xh, sh_yl, sh_yh, NS
 .export fx_x, fx_y, fx_t, fx_k
 .export throw_fire, th_on, th_xl, th_xh, th_yl, th_yh, th_zh, NT
@@ -65,6 +65,19 @@ col_init:
         dex
         bpl :-
         sta fx_t
+        sta col_z
+        rts
+
+; level: X = body -> C=1 if it is 8 pixels or more above or below col_z, the
+; height a question is asked at: bodies at different heights pass each other
+level:
+        lda pb_zh,x
+        sec
+        sbc col_z
+        bcs :+
+        eor #$FF
+        adc #1
+:       cmp #8
         rts
 
 ; ---------------------------------------------------------------------------
@@ -160,6 +173,8 @@ col_point:
         beq @n
         cpx col_skip
         beq @n
+        jsr level
+        bcs @n
         jsr inbox
         bcs @hit
 @n:     dex
@@ -214,6 +229,8 @@ col_box:
         ldx #NB-1
 @b:     lda pb_mov,x
         beq @n
+        jsr level
+        bcs @n
         jsr overlap
         bcc @n
         txa                     ; set the body's bit
@@ -300,6 +317,14 @@ col_near:
         beq @n
         cpy q5
         beq @n
+        lda pb_zh,y             ; at the asker's height, within 8 pixels
+        sec
+        sbc pb_zh,x
+        bcs :+
+        eor #$FF
+        adc #1
+:       cmp #8
+        bcs @n
         lda pb_xl,y
         sec
         sbc pb_xl,x
@@ -428,6 +453,8 @@ col_line:
         beq @cn
         cpx col_skip
         beq @cn
+        jsr level
+        bcs @cn
         jsr overlap
         bcc @cn
         txa
@@ -606,6 +633,12 @@ shot_fire:
         sta sh_on,x
         lda q3
         sta sh_own,x
+        ldy q3                  ; at the firer's height (none: the ground)
+        lda #0
+        cpy #NB
+        bcs :+
+        lda pb_zh,y
+:       sta sh_z,x
         lda #$80
         sta sh_xf,x
         sta sh_yf,x
@@ -679,6 +712,8 @@ shot_step:
         ldx cur_s
 @n:     dex
         bpl @s
+        lda #0                  ; the game's questions: at the ground again
+        sta col_z
         rts
 
 one_shot:
@@ -725,6 +760,8 @@ one_shot:
         sta col_y1+1
         lda sh_own,x
         sta col_skip
+        lda sh_z,x
+        sta col_z
         lda #P_SOLID
         sta col_mask
         jsr col_line
@@ -1007,6 +1044,10 @@ blast:
 @b:     lda pb_mov,y
         bne :+
         jmp @n
+:       lda pb_zh,y             ; a blast reaches 16 pixels up
+        cmp #16
+        bcc :+
+        jmp @n
 :
         lda pb_xl,y             ; dx = body - blast
         sec
@@ -1112,6 +1153,7 @@ col_y0: .res 2
 col_x1: .res 2
 col_y1: .res 2
 col_skip: .res 1                ; a body the question ignores ($FF none)
+col_z:  .res 1                  ; the height it is asked at: bodies 8 pixels or more away pass
 col_mask: .res 1                ; the wall bits col_line stops at
 col_body: .res 1                ; the answers
 col_hx: .res 2
@@ -1133,6 +1175,7 @@ pa_y0:  .res 2
 cur_s:  .res 1
 sh_on:  .res NS                 ; shots: frames left, 0 = free
 sh_own: .res NS
+sh_z:   .res NS                 ; the height it flies at: its firer's
 sh_xf:  .res NS
 sh_xl:  .res NS
 sh_xh:  .res NS

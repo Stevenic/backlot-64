@@ -222,6 +222,14 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 - The first frames on the roof drew the helicopter 24 pixels above its own shadow. The example raised it by its altitude, but roofs are drawn at ground level. The mover now leaves the height above whatever is under the craft in `pb_agl`, and the example draws from that.
 - The city scene's frames lost reached its limit again as the shared example grew. Instead of raising the limit a second time, the status row is now made on one frame and shown on another, as the traffic demo does. That took it from 44 to 39.
 
+### 18 September, late night: shots and height; an encounter zoom planned
+
+**The asks.** Asked where physics had landed, the list of what was not done came back: shots that ignore altitude, planes, debris, airboats, the status-row fault and a cost pass. Steven: "do the other tasks", then "add demos for each". Midway: "we should be able to zoom from an overhead view down to a 3/4 view for things like encounters." The zoom was designed and put on the roadmap (step 14b). Steven chose to build it after the physics list, with 3/4 sets both chosen by the kind of place and authored for particular encounters.
+
+**What was built.** Every question the collision module answers is now asked at a height, `col_z`, and sees only bodies within 8 pixels of it. A shot flies at its firer's height, and a blast reaches 16 pixels up. `col_near` compares the asker's own height, so a walker under a hovering helicopter cannot climb into it. Its demo is a fourth build of the example: a helicopter lifts off across the road and holds 32 pixels up, flown by a small pilot in the example. Shots pass beneath it and a grenade goes off under it; once it settles, the same shots hit it. The example's scenes are now built from one Makefile template, since there will be more.
+
+**How it is checked.** `hover.beneath`: never hit while 8 pixels or more up, though shots cross its footprint (9 frames). `hover.blast`: a blast in reach at 16 pixels up does not mark it. `hover.down`: hit three times on the ground.
+
 ---
 
 ## What went wrong, and what caught it
