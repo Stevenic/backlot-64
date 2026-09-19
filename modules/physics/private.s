@@ -23,3 +23,4 @@ push_j: .res 1
 cl_x:   .res 1
 w_and:  .res 1
 w_eor:  .res 1
+wv:     .res 6                  ; wheels: the car's frame on entry, and a byte forcing the world velocity

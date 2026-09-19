@@ -16,9 +16,14 @@
 .export col_init, col_line, col_point, col_box, col_tile, col_near, shot_fire, shot_step
 .export col_x0, col_y0, col_x1, col_y1, col_skip, col_mask, col_body, col_hx, col_hy, col_bits
 .export sh_on, sh_xl, sh_xh, sh_yl, sh_yh, NS
-.export fx_x, fx_y, fx_t
+.export fx_x, fx_y, fx_t, fx_k
+.export throw_fire, th_on, th_xl, th_xh, th_yl, th_yh, th_zh, NT
 
 NS      = 8                     ; shots in flight at once
+NT      = 4                     ; things thrown at once
+GRAV    = 12                    ; gravity, 1/256 pixel a frame each frame
+FUSE    = 70                    ; frames before a grenade goes off
+BLAST   = 40                    ; its reach, pixels
 STEP    = 4                     ; a traced path's step, pixels: under the smallest body (6)
 
 q0      = $90                   ; temporaries
@@ -46,12 +51,17 @@ syh     = $9F
         jmp col_tile            ; +12  col_x0/y0: A = the properties there
         jmp col_near            ; +15  X = body, A = reach: Y = the nearest, C=1
         jmp shot_fire           ; +18  col_x0/y0, A = heading, Y = speed, X = owner
-        jmp shot_step           ; +21  every shot one frame
+        jmp shot_step           ; +21  every shot and every thrown thing one frame
+        jmp throw_fire          ; +24  col_x0/y0, A = heading, Y = speed: a grenade
 
 col_init:
         ldx #NS-1
         lda #0
 :       sta sh_on,x
+        dex
+        bpl :-
+        ldx #NT-1
+:       sta th_on,x
         dex
         bpl :-
         sta fx_t
@@ -660,7 +670,8 @@ shot_step:
         lda fx_t
         beq :+
         dec fx_t
-:       ldx #NS-1
+:       jsr throw_step
+        ldx #NS-1
 @s:     lda sh_on,x
         beq @n
         stx cur_s
@@ -732,6 +743,8 @@ one_shot:
         sta fx_y+1
         lda #6
         sta fx_t
+        lda #1                  ; a shot's stop
+        sta fx_k
         ldy col_body
         cpy #$FF
         beq @done               ; a wall
@@ -778,6 +791,321 @@ one_shot:
 bits:   .byte $01, $02, $04, $08, $10, $20, $40, $80
 
 ; ---------------------------------------------------------------------------
+; thrown things.  throw_fire: a grenade from col_x0/y0 at heading A, Y
+; pixels a frame, tossed up at a pixel a frame -> C=1 if one was free
+throw_fire:
+        sta q4
+        sty q5
+        ldx #NT-1
+:       lda th_on,x
+        beq @free
+        dex
+        bpl :-
+        clc
+        rts
+@free:  lda #FUSE
+        sta th_on,x
+        lda #$80
+        sta th_xf,x
+        sta th_yf,x
+        lda col_x0
+        sta th_xl,x
+        lda col_x0+1
+        sta th_xh,x
+        lda col_y0
+        sta th_yl,x
+        lda col_y0+1
+        sta th_yh,x
+        lda #0
+        sta th_zl,x
+        sta th_zh,x
+        sta th_vzl,x
+        lda #1                  ; tossed up at a pixel a frame: 11 pixels high, down in 40 frames
+        sta th_vzh,x
+        lda q4
+        clc
+        adc #64
+        tay
+        lda PHYS_SINE,y
+        jsr times_speed
+        sta th_vxl,x
+        tya
+        sta th_vxh,x
+        ldy q4
+        lda PHYS_SINE,y
+        jsr times_speed
+        sta th_vyl,x
+        tya
+        sta th_vyh,x
+        sec
+        rts
+
+; throw_step: every thrown thing one frame: gravity, the ground (a bounce at
+; a quarter of the speed it landed with, and half its speed along the ground
+; lost), walls (the axis that meets one turns back at half speed), and at the
+; end of its fuse, a blast
+throw_step:
+        ldx #NT-1
+@t:     lda th_on,x
+        beq @n
+        stx cur_s
+        jsr one_throw
+        ldx cur_s
+@n:     dex
+        bpl @t
+        rts
+
+one_throw:
+        lda th_vzl,x            ; fall: vz -= g, z += vz
+        sec
+        sbc #GRAV
+        sta th_vzl,x
+        lda th_vzh,x
+        sbc #0
+        sta th_vzh,x
+        lda th_zl,x
+        clc
+        adc th_vzl,x
+        sta th_zl,x
+        lda th_zh,x
+        adc th_vzh,x
+        sta th_zh,x
+        bpl @air
+        lda #0                  ; the ground: bounce at a quarter speed, slow along it
+        sta th_zl,x
+        sta th_zh,x
+        lda th_vzh,x
+        sta q1
+        lda th_vzl,x
+        sta q0
+        lda #0
+        sec
+        sbc q0
+        sta q0
+        lda #0
+        sbc q1
+        lsr a
+        ror q0
+        lsr a
+        ror q0
+        sta th_vzh,x
+        lda q0
+        sta th_vzl,x
+        lda th_vxh,x            ; and half the speed along the ground
+        cmp #$80
+        ror th_vxh,x
+        ror th_vxl,x
+        lda th_vyh,x
+        cmp #$80
+        ror th_vyh,x
+        ror th_vyl,x
+@air:   lda th_xl,x             ; along x: a wall there turns it back
+        clc
+        adc th_vxh,x
+        sta col_x0
+        lda th_vxh,x
+        and #$80
+        beq :+
+        lda #$FF
+:       adc th_xh,x
+        sta col_x0+1
+        lda th_yl,x
+        sta col_y0
+        lda th_yh,x
+        sta col_y0+1
+        jsr col_tile
+        ldx cur_s
+        and #P_SOLID
+        beq @mx
+        lda th_vxh,x
+        jsr half_back
+        sta th_vxh,x
+        lda #0
+        sta th_vxl,x
+        jmp @y
+@mx:    lda th_xf,x
+        clc
+        adc th_vxl,x
+        sta th_xf,x
+        lda th_xl,x
+        adc th_vxh,x
+        sta th_xl,x
+        lda th_vxh,x
+        and #$80
+        beq :+
+        lda #$FF
+:       adc th_xh,x
+        sta th_xh,x
+@y:     lda th_yl,x             ; along y, the same
+        clc
+        adc th_vyh,x
+        sta col_y0
+        lda th_vyh,x
+        and #$80
+        beq :+
+        lda #$FF
+:       adc th_yh,x
+        sta col_y0+1
+        lda th_xl,x
+        sta col_x0
+        lda th_xh,x
+        sta col_x0+1
+        jsr col_tile
+        ldx cur_s
+        and #P_SOLID
+        beq @my
+        lda th_vyh,x
+        jsr half_back
+        sta th_vyh,x
+        lda #0
+        sta th_vyl,x
+        jmp @fuse
+@my:    lda th_yf,x
+        clc
+        adc th_vyl,x
+        sta th_yf,x
+        lda th_yl,x
+        adc th_vyh,x
+        sta th_yl,x
+        lda th_vyh,x
+        and #$80
+        beq :+
+        lda #$FF
+:       adc th_yh,x
+        sta th_yh,x
+@fuse:  dec th_on,x
+        beq blast
+        rts
+
+; half_back: A = a velocity's high byte -> A = -(it) / 2, rounded away from
+; zero; under a pixel a frame it stops
+half_back:
+        eor #$FF
+        clc
+        adc #1
+        cmp #$80
+        ror a
+        rts
+
+; blast: X = throw, gone off.  Every body within BLAST pixels (on both axes)
+; is pushed away from it, harder the nearer, takes damage, and is knocked
+; down if on foot; the flash is left for the game to draw (fx_t = 12).
+blast:
+        lda th_xl,x
+        sta fx_x
+        lda th_xh,x
+        sta fx_x+1
+        lda th_yl,x
+        sta fx_y
+        lda th_yh,x
+        sta fx_y+1
+        lda #12
+        sta fx_t
+        lda #2                  ; a blast
+        sta fx_k
+        ldy #NB-1
+@b:     lda pb_mov,y
+        bne :+
+        jmp @n
+:
+        lda pb_xl,y             ; dx = body - blast
+        sec
+        sbc fx_x
+        sta q0
+        lda pb_xh,y
+        sbc fx_x+1
+        sta bdx
+        jsr absd
+        bcc :+
+        jmp @n
+:
+        cmp #BLAST
+        bcc :+
+        jmp @n
+:
+        sta q2                  ; |dx|
+        lda pb_yl,y
+        sec
+        sbc fx_y
+        sta q0
+        lda pb_yh,y
+        sbc fx_y+1
+        sta bdy
+        jsr absd
+        bcc :+
+        jmp @n
+:
+        cmp #BLAST
+        bcc :+
+        jmp @n
+:
+        cmp q2                  ; the larger of |dx| and |dy|
+        bcs :+
+        lda q2
+:       ldx #2                  ; the push: 2 pixels a frame near, 1 beyond half the reach
+        cmp #BLAST/2
+        bcc :+
+        dex
+:       stx q3
+        lda bdx                 ; away along x
+        bmi :+
+        lda q3
+        jmp :++
+:       lda #0
+        sec
+        sbc q3
+:       clc
+        adc pb_vxh,y
+        sta pb_vxh,y
+        lda bdy                 ; and along y
+        bmi :+
+        lda q3
+        jmp :++
+:       lda #0
+        sec
+        sbc q3
+:       clc
+        adc pb_vyh,y
+        sta pb_vyh,y
+        lda q3                  ; damage: 20 a pixel of push
+        asl
+        asl
+        sta q0
+        asl
+        asl
+        adc q0
+        clc
+        adc pb_dmg,y
+        bcc :+
+        lda #255
+:       sta pb_dmg,y
+        lda #32
+        sta pb_hit,y
+        lda pb_st,y
+        and #<~ST_SLEEP
+        ora #ST_WORLD
+        sta pb_st,y
+        lda #0
+        sta pb_idle,y
+        lda pb_mov,y
+        cmp #M_FOOT
+        beq :+
+        jmp @n
+:
+        lda pb_st,y
+        ora #ST_DOWN
+        sta pb_st,y
+        lda #50
+        sta pb_tmr,y
+@n:     dey
+        bmi @done
+        jmp @b
+@done:  ldx cur_s
+        lda #0
+        sta th_on,x
+        rts
+
+; ---------------------------------------------------------------------------
 .segment "OVERLAY"
 col_x0: .res 2                  ; the questions' input
 col_y0: .res 2
@@ -815,6 +1143,24 @@ sh_vxl: .res NS
 sh_vxh: .res NS
 sh_vyl: .res NS
 sh_vyh: .res NS
+th_on:  .res NT                 ; thrown things: fuse frames left, 0 = none
+th_xf:  .res NT
+th_xl:  .res NT
+th_xh:  .res NT
+th_yf:  .res NT
+th_yl:  .res NT
+th_yh:  .res NT
+th_zl:  .res NT                 ; altitude, 8.8
+th_zh:  .res NT
+th_vxl: .res NT
+th_vxh: .res NT
+th_vyl: .res NT
+th_vyh: .res NT
+th_vzl: .res NT
+th_vzh: .res NT
+bdx:    .res 1
+bdy:    .res 1
 fx_x:   .res 2                  ; the last hit, for the game to draw
 fx_y:   .res 2
 fx_t:   .res 1
+fx_k:   .res 1                  ; what it was: 1 a shot's stop, 2 a blast

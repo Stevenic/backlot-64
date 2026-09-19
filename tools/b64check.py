@@ -435,18 +435,24 @@ def physics(R, port):
 
     finals, walls, ram, prev = [], 0, None, None
     shots_in_wall, fired, stops, bad_stops = 0, 0, 0, 0
+    throws_in_wall, blasts, reached, responded, asleep = 0, 0, 0, 0, False
 
     def solid(x, y):
         return props[world[((y >> 5) << 11) | (x >> 5)]] & 0x80
-    for run in range(2):
+    for run in range(3):
         v = Vice("build/physics-auto.prg", *TIERS[8], labels="build/physics-auto.lbl", port=port)
         try:
             v.frames(10)                        # past the start: the module loaded, the tick counting
             t0 = v.word("tick")
-            for f in range(760):
+            if run == 2:                                                 # the third run times every step
+                costs = []
+                for _ in range(800):
+                    a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["phys_step"]))[-1])
+                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
+                    costs.append(c - a)
+                continue
+            for f in range(800):
                 v.frames(1)
-                if run:
-                    continue
                 bs = bodies(v)
                 walls += sum(1 for b in bs.values() if in_wall(b))
                 on = v.mem(syms["sh_on"], 8)
@@ -454,7 +460,21 @@ def physics(R, port):
                 sy = [a | b << 8 for a, b in zip(v.mem(syms["sh_yl"], 8), v.mem(syms["sh_yh"], 8))]
                 fired += sum(1 for k in range(8) if on[k] == 39)      # fired this frame (40, less one step)
                 shots_in_wall += sum(1 for k in range(8) if on[k] and solid(sx[k], sy[k]))
-                if v.mem(syms["fx_t"])[0] == 6:                          # a shot stopped this frame
+                ton = v.mem(syms["th_on"], 4)
+                tx = [a | b << 8 for a, b in zip(v.mem(syms["th_xl"], 4), v.mem(syms["th_xh"], 4))]
+                ty = [a | b << 8 for a, b in zip(v.mem(syms["th_yl"], 4), v.mem(syms["th_yh"], 4))]
+                throws_in_wall += sum(1 for k in range(4) if ton[k] and solid(tx[k], ty[k]))
+                fxt, fxk = v.mem(syms["fx_t"])[0], v.mem(syms["fx_k"])[0]
+                if fxt == 12 and fxk == 2:                               # a grenade went off this frame
+                    blasts += 1
+                    fx, fy = v.word(syms["fx_x"]), v.word(syms["fx_y"])
+                    for b in bs.values():                                # each body in reach shows it
+                        if abs(b["x"] - fx) < 40 and abs(b["y"] - fy) < 40:
+                            reached += 1
+                            responded += bool(b["hit"] == 32 and (b["cls"] != 0 or b["st"] & 2))
+                if f == 530:
+                    asleep = any(b["cls"] == 1 and b["st"] & 0x80 for b in bs.values())
+                if fxt == 6 and fxk == 1:                                # a shot stopped this frame
                     stops += 1
                     bad_stops += bool(solid(v.word(syms["fx_x"]), v.word(syms["fx_y"])))
                 if ram is None and prev:
@@ -468,20 +488,16 @@ def physics(R, port):
                             p1 = MASS[1] * bs[i][axis] + MASS[2] * bs[j][axis]
                             ram = (axis, p0, p1)
                 prev = bs
-            lost = 760 - (v.word("tick") - t0)
+            if not run:
+                lost = 800 - (v.word("tick") - t0)
             finals.append(bodies(v))
-            if run == 0:
-                sedan = [b for b in finals[0].values() if b["cls"] == 1]
-                asleep = bool(sedan) and all(b["st"] & 0x80 for b in sedan)
-                costs = []
-                for _ in range(24):
-                    a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["phys_step"]))[-1])
-                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
-                    costs.append(c - a)
-                costs.sort()
+
         finally:
             v.close()
-    R.check("physics.walls", walls == 0, f"760 frames of the tape: {walls} body-frames with a corner in a wall")
+    R.check("physics.walls", walls == 0, f"800 frames of the tape: {walls} body-frames with a corner in a wall")
+    R.check("collision.thrown", blasts > 0 and reached > 0 and responded == reached and throws_in_wall == 0,
+            f"{blasts} blasts reaching {reached} bodies, {responded} of them pushed and marked (and down, "
+            f"on foot); {throws_in_wall} thrown-frames inside a wall")
     R.check("collision.shots", fired > 0 and stops > 0 and shots_in_wall == 0 and bad_stops == 0,
             f"{fired} shots fired, {stops} stopped; {shots_in_wall} shot-frames inside a wall, "
             f"{bad_stops} stopping points inside one")
@@ -490,7 +506,9 @@ def physics(R, port):
     R.check("physics.momentum", ram is not None and abs(ram[2] - ram[1] - 64) <= 64,
             f"the first ram, along {ram[0] if ram else '?'}: momentum {ram[1] if ram else '?'} before and "
             f"{ram[2] if ram else '?'} after, the engine's push 64 (mass x 1/256 pixel a frame)")
-    R.check("physics.rest", asleep, "the abandoned sedan came to rest and sleeps" if asleep else "the abandoned sedan is still awake")
+    R.check("physics.rest", asleep, "the abandoned sedan came to rest and sleeps (frame 530)" if asleep
+            else "the abandoned sedan is still awake at frame 530")
+    costs.sort()
     R.check("physics.repeat", finals[0] == finals[1], "two runs of the tape end in the same state" if finals[0] == finals[1]
             else "two runs of the tape end in different states")
     R.measure("physics.step_median", costs[len(costs) // 2])

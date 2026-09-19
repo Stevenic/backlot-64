@@ -216,7 +216,7 @@ $(BUILD)/physics.bin $(BUILD)/physics_syms.inc: $(BUILD)/physics.o $(BUILD)/over
 $(BUILD)/collision.o: modules/collision/collision.s modules/physics/defs.inc include/b64.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
 $(BUILD)/collision.bin $(BUILD)/collision_syms.inc: $(BUILD)/collision.o $(BUILD)/overlay.prg overlay.cfg tools/b64overlay.py
-	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl overlay.cfg $(BUILD)/collision.o $(BUILD)/collision.bin --inc $(BUILD)/collision_syms.inc col_,sh_,shot_,fx_,NS
+	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl overlay.cfg $(BUILD)/collision.o $(BUILD)/collision.bin --inc $(BUILD)/collision_syms.inc col_,sh_,shot_,fx_,NS,th_,throw_,NT
 $(BUILD)/cars16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py car $@
 

@@ -206,10 +206,19 @@ umul8:
         rts
 
 ; smul: m16 (8.8, signed) * A (1.7, signed) -> res (8.8, signed).  Keeps X.
+; A zero on either side costs a test (a heading along an axis, a car standing).
 smul:
         ldy #0
         sty sgn
         tay
+        beq @zero
+        lda m16
+        ora m16+1
+        bne :+
+@zero:  sta res                 ; A = 0 here either way
+        sta res+1
+        rts
+:       tya
         bpl :+
         eor #$FF
         clc
@@ -234,6 +243,7 @@ smul:
         lda mr_hi
         sta t3                  ; p1 (so far)
         lda m16+1
+        beq @p2                 ; |m| < 1: no high product (A = p2 = 0)
         ldy t4
         jsr umul8
         lda t3
@@ -242,6 +252,7 @@ smul:
         sta t3                  ; p1
         lda mr_hi
         adc #0                  ; p2
+@p2:
         ; >> 7: (p << 1) >> 8
         asl t2
         rol t3

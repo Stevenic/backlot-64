@@ -86,6 +86,6 @@ traffic.frames_lost           150   #    22   the demo's own measure: see above
 # in it.  Frames without a callback in 760.  Measured after 690 frames at
 # first (4,521, 6,551, 51); the tape now ends with shooting and runs to 760,
 # with more bodies awake when it is measured: the same code, a busier scene.
-physics.step_median          5500   #  5219   phys_step, 9 bodies
-physics.step_worst           7900   #  7505
-physics.frames_lost            95   #    78   of 760: the next cost pass is due
+physics.step_median          6750   #  6357   phys_step over all 800 steps of the tape (was 24 quiet steps after it)
+physics.step_worst          16200   # 14922   a three-car pile-up: two pairs resolved in one step
+physics.frames_lost            40   #    34   of 800 (81 on the same tape before the multiply shortcuts)

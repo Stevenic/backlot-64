@@ -64,7 +64,7 @@ game_main:
         jsr b64_fetch
         B64_SET24 b64_reu, SLOT_COLLISION      ; and the collision module in region A
         B64_SET16 b64_ptr, $8000
-        B64_SET16 b64_len, $0800
+        B64_SET16 b64_len, $1000
         jsr b64_fetch
         jsr col_init
         jsr phys_init
@@ -253,7 +253,8 @@ get_in:
         clc
         rts
 
-; fire: a shot from the player, the way it faces, 6 pixels a frame
+; fire: a shot from the player the way it faces, 6 pixels a frame; standing
+; still (no direction held), a grenade tossed that way instead
 fire:
         ldx player
         lda pb_xl,x
@@ -264,9 +265,15 @@ fire:
         sta col_y0
         lda pb_yh,x
         sta col_y0+1
+        lda joy
+        and #$0F
+        beq @toss
         lda pb_ang,x
         ldy #6
         jmp shot_fire
+@toss:  lda pb_ang,x
+        ldy #2
+        jmp throw_fire
 
 ; get_out: a walker beside the car (18 pixels south of it); the car coasts
 get_out:
@@ -454,7 +461,10 @@ submit_shots:
         bpl @s
         lda fx_t
         beq @done
-        lda fx_x
+        lda fx_k
+        cmp #2
+        beq @ring
+        lda fx_x                ; a shot's stop: a dot
         sta shx
         lda fx_x+1
         sta shx+1
@@ -465,8 +475,91 @@ submit_shots:
         lda #21
         sta b64_spr_slot
         lda #7
-        jmp submit_dot
-@done:  rts
+        jsr submit_dot
+        jmp @done
+@ring:  lda #12                 ; a blast: four dots on a ring growing 3 pixels a frame
+        sec
+        sbc fx_t
+        sta ring_r
+        asl a
+        adc ring_r
+        sta ring_r
+        ldx #3
+@rd:    stx sb_x
+        txa
+        lsr a                   ; bit 0: left or right
+        lda fx_x
+        ldy fx_x+1
+        jsr ring_off
+        sta shx
+        sty shx+1
+        lda sb_x
+        lsr a
+        lsr a                   ; bit 1: up or down
+        lda fx_y
+        ldy fx_y+1
+        jsr ring_off
+        sta shy
+        sty shy+1
+        lda #21                 ; the one frame, shared
+        sta b64_spr_slot
+        lda fx_t                ; yellow and orange by turns
+        lsr a
+        and #1
+        clc
+        adc #7
+        jsr submit_dot
+        ldx sb_x
+        dex
+        bpl @rd
+@done:  ldx #NT-1                ; thrown things: raised by their height, a shadow below
+@t:     lda th_on,x
+        beq @tn
+        stx sb_x
+        lda th_xl,x
+        sta shx
+        lda th_xh,x
+        sta shx+1
+        lda th_yl,x
+        sta shy
+        lda th_yh,x
+        sta shy+1
+        txa
+        clc
+        adc #22
+        sta b64_spr_slot
+        lda #0                  ; the shadow
+        jsr submit_dot
+        ldx sb_x
+        lda th_yl,x             ; the thing itself, up by its height
+        sec
+        sbc th_zh,x
+        sta shy
+        lda th_yh,x
+        sbc #0
+        sta shy+1
+        lda sb_x
+        clc
+        adc #26
+        sta b64_spr_slot
+        lda #7
+        jsr submit_dot
+        ldx sb_x
+@tn:    dex
+        bpl @t
+        rts
+
+; ring_off: A/Y = a coordinate -> A/Y = it plus ring_r, or minus it when C=1
+ring_off:
+        bcs @sub
+        adc ring_r
+        bcc :+
+        iny
+:       rts
+@sub:   sbc ring_r
+        bcs :+
+        dey
+:       rts
 
 ; submit_dot: shx/shy (world), A = colour, b64_spr_slot -> the lamp frame there
 submit_dot:
@@ -720,9 +813,15 @@ tenths:    .byte "0112334456678899"
 ; ---------------------------------------------------------------------------
 ; the tape (AUTODRIVE): frames, then the stick
 .ifdef AUTODRIVE
-tape_len:  .byte 40, 6, 1, 1, 100, 30, 50, 25, 40, 60, 40, 1, 1, 60, 1, 30, 1, 30, 4, 1, 30, 0
-tape_joy:  .byte 0, IN_UP, IN_UP | IN_FIRE, 0, IN_UP, 0, IN_DOWN, IN_UP | IN_LEFT, IN_UP | IN_RIGHT | IN_FIRE, IN_DOWN, 0, IN_FIRE, 0, IN_RIGHT
-           .byte IN_RIGHT | IN_FIRE, 0, IN_FIRE, 0, IN_UP, IN_UP | IN_FIRE, 0
+; walk to the sedan and get in; drive into the others; coast, brake and
+; reverse, turn; get up speed, then drift (the handbrake is fire held when
+; moving: a tap when all but stopped would get out); brake to a stop, get out;
+; walk east, fire, toss a grenade; face north, fire; walk south, away from
+; the cars (a tap within reach of one gets in), face west, toss another
+tape_len:  .byte 40, 6, 1, 1, 100, 30, 50, 25, 15, 25, 20, 40, 1, 1, 60, 1, 30, 1, 30, 4, 1, 30, 25, 3, 10, 1, 100, 0
+tape_joy:  .byte 0, IN_UP, IN_UP | IN_FIRE, 0, IN_UP, 0, IN_DOWN, IN_UP | IN_LEFT, IN_UP | IN_RIGHT, IN_UP | IN_RIGHT | IN_FIRE
+           .byte IN_DOWN, 0, IN_FIRE, 0, IN_RIGHT, IN_RIGHT | IN_FIRE, 0, IN_FIRE, 0, IN_UP, IN_UP | IN_FIRE, 0, IN_DOWN
+           .byte IN_LEFT, 0, IN_FIRE, 0
 .endif
 
 .segment "GAMETOP"
@@ -730,3 +829,4 @@ shx:    .res 2
 shy:    .res 2
 tapped: .res 1
 sb_x:   .res 1
+ring_r: .res 1

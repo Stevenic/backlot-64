@@ -2,7 +2,7 @@
 
 Designed 2026-09-18 with the user. A game has people on foot, cars, boats, helicopters, planes, bullets and debris; each moves by different rules, but all of them need the same things underneath: positions and velocities, the map under them, walls, each other, and an end to the work when nothing is happening. So the physics is a shared core and a set of movers, one per way of moving, in one pinned module (`modules/physics`).
 
-Status, 2026-09-18: the core, on foot and driving (the ground module), the split into modules with the body tables at fixed addresses, and the collision module with shots are built and checked (`modules/physics`, `modules/collision`, `examples/physics`, `make run-physics`). Next, in order: thrown things and debris, water, air.
+Status, 2026-09-18: the core, on foot and driving (the ground module), the split into modules with the body tables at fixed addresses, and the collision module with shots and grenades are built and checked (`modules/physics`, `modules/collision`, `examples/physics`, `make run-physics`). Next, in order: water, air, then debris.
 
 ---
 
@@ -14,7 +14,7 @@ Status, 2026-09-18: the core, on foot and driving (the ground module), the split
 | **wheels** | cars, trucks, bikes, scooters | Tyres. Speed along the heading and across it; throttle, brake and reverse; steering scaled by speed and reversed when reversing; grip takes away the sideways speed a frame at a time, and what grip cannot take the car slides on (a skid); the handbrake takes most of the grip away (a drift); the surface under it sets grip, drag and top speed | |
 | **hull** | boats, airboats | The wheels model with little grip and much drag, on water only: land is a wall. Airboats also cross marsh | planned |
 | **air** | helicopters, planes | Altitude as a third coordinate. A helicopter hovers, climbs and moves any way; a plane keeps a minimum speed and turns harder the faster it goes. Buildings are walls only below their height. The craft is drawn raised and its shadow on the ground | planned |
-| **thrown** | bullets, thrown things, debris | Bullets step in short hops so they cannot pass through a wall, and hit the first body in their way. Thrown things arc under gravity and bounce. Debris ignores everything but the ground | planned |
+| **thrown** | bullets, thrown things, debris | Bullets step in short hops so they cannot pass through a wall, and hit the first body in their way. Thrown things arc under gravity, bounce off the ground and walls, and go off. Debris ignores everything but the ground | in the collision module (below); debris planned |
 
 A body's mover is fixed when it is added; a person getting into a car is the game removing a foot body and waking a wheels body.
 
@@ -62,7 +62,7 @@ The body table is a set of arrays at addresses the build exports (`build/physics
 
 ### The collision module
 
-`modules/collision`, 1.6 KB in region A at $8000, zero page $90-$9F, reading the body tables at their fixed addresses. Its jump table:
+`modules/collision`, 2.4 KB in region A at $8000, zero page $90-$9F, reading the body tables at their fixed addresses. Its jump table:
 
 | Entry | Offset | In | Out |
 |---|---|---|---|
@@ -73,9 +73,12 @@ The body table is a set of arrays at addresses the build exports (`build/physics
 | `col_tile` | +12 | `col_x0/y0` | A = the properties of the metatile there (one byte of DMA, none if it is the last one asked) |
 | `col_near` | +15 | X = body, A = reach | Y = the nearest other body within reach, C=1 |
 | `shot_fire` | +18 | `col_x0/y0`, A = heading, Y = speed, X = the firer | C=1 if a shot was free (eight at once) |
-| `shot_step` | +21 | | every shot one frame |
+| `shot_step` | +21 | | every shot and every thrown thing one frame |
+| `throw_fire` | +24 | `col_x0/y0`, A = heading, Y = speed | C=1 if a grenade was free (four at once) |
 
 A traced path steps 4 pixels at a time along its longer axis, less than the smallest body (6), and tests only the bodies whose boxes meet the path's box, so a long trace across an empty street costs little and nothing can be stepped over. A shot is traced from where it was to where it is going each frame: a wall stops it; a body it meets takes 16 damage and a quarter of the shot's speed as a push, and is knocked down if on foot. The last stop is left for the game to draw (`fx_x/y`, `fx_t`). `make check` fires shots in the demo's tape and requires that no shot is ever inside a wall and that every stopping point is clear of one (`collision.shots`).
+
+A thrown thing (a grenade) has an altitude: tossed up at a pixel a frame, it falls at 12/256 of a pixel a frame each frame, so it rises 11 pixels and lands 40 frames on. On the ground it bounces at a quarter of the speed it landed with and loses half its speed along the ground, so a grenade tossed at 2 pixels a frame settles about 90 pixels away. Along each axis it asks `col_tile` about the point it is moving to, and an axis that would enter a wall turns back at half speed, so it rebounds off buildings. It passes over bodies. After 70 frames it goes off: every body within 40 pixels on both axes is pushed away from it, 2 pixels a frame within half the reach and 1 beyond, takes 20 damage a pixel of push, is woken and marked with an impact of 32, and is knocked down if on foot. The flash is left for the game to draw (`fx_x/y`, `fx_t` 12, `fx_k` 2; a shot's stop is `fx_k` 1). The game draws a thrown thing twice: its shadow on the ground and itself raised by its altitude (`th_zh`). The demo draws a blast as four dots on a ring growing 3 pixels a frame. `make check` throws grenades in the tape and requires that none is ever inside a wall and that every body within reach of a blast shows it (`collision.thrown`).
 
 ## 5. Classes
 
@@ -93,13 +96,13 @@ Each mover has a small table of classes; a game will supply its own from its ros
 
 ## 6. What it costs, and what is measured
 
-`make check` plays `examples/physics`'s input tape: walk to a sedan, get in, drive into the sports car and the truck, brake, reverse, turn, drift, stop, get out, walk. It requires:
+`make check` plays `examples/physics`'s input tape: walk to a sedan, get in, drive into the sports car and the truck, brake, reverse, turn, drift, stop, get out, walk, fire, throw grenades. It requires:
 
-- no body's box ever has a corner in a wall, judged from the world map file and the tileset's properties rather than the module's own cache (690 frames: none);
+- no body's box ever has a corner in a wall, judged from the world map file and the tileset's properties rather than the module's own cache (800 frames: none);
 - the first ram conserves momentum along its axis, allowing for the engine's push that frame (3,936 before, 4,032 after, the push 64, in mass x 1/256 pixel a frame);
-- the abandoned car comes to rest and sleeps;
+- the abandoned car comes to rest and sleeps (by frame 530, before the grenades);
 - two runs of the tape end in the same state.
 
-Measured after the tape, nine bodies with five awake: `phys_step` 4,521 cycles at the median and 6,551 at worst, interrupts included, and 51 frames lost in 690. That is too much for a stock machine with a game on top; the costs are budgeted (`physics.*`) and the next pass on them comes with the split.
+Measured over every step of the 800-frame tape, nine bodies with up to six awake: `phys_step` 6,357 cycles at the median and 14,922 at worst, interrupts included, and 34 frames lost in 800. The worst step is a three-car pile-up, two pairs resolved in one frame; the median is dominated by the wheels mover. The costs are budgeted (`physics.*`); the stock machine needs another pass before a game carries this many cars awake at once.
 
-**What the measurements changed while it was built.** The first step cost 13,000 cycles for nine bodies. Testing every pair fully was 2,400 of it; a compact list of live bodies with a one-byte distance test first brought pairs to under a thousand. A box wholly inside its metatile skips the wall test (the body stands in it, so it is no wall), an axis without velocity skips its move, and the map cache is consulted only when a move crosses a metatile edge.
+**What the measurements changed while it was built.** The first step cost 13,000 cycles for nine bodies. Testing every pair fully was 2,400 of it; a compact list of live bodies with a one-byte distance test first brought pairs to under a thousand. A box wholly inside its metatile skips the wall test (the body stands in it, so it is no wall), an axis without velocity skips its move, and the map cache is consulted only when a move crosses a metatile edge. The wheels mover cost about 1,000 cycles a car a frame, most of it four or five signed multiplies turning the car's frame into the world's; a multiply by zero now costs a test (a car on an axis heading, a car standing), a speed under a pixel a frame skips the high product, and a car whose heading and speeds did not change keeps last frame's world velocity. Frames lost over the tape fell from 81 to 37 of 800, with every body's path unchanged to the bit (the momentum and repeat checks give the same figures).

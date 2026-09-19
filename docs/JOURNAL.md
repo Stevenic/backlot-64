@@ -184,6 +184,20 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 - The first physics step cost 13,000 cycles for nine bodies. Testing every pair in full was most of it (see PHYSICS.md section 6).
 - The first version of the check reset its results for each of its two runs. The second run does not look, so the wall check passed without having looked. Caught when the ram test reported no ram in a run where the trace showed one. Fixed, and the wall check has now really passed.
 
+### 18 September, night: grenades, and a first cost pass
+
+**What was built.** Thrown things in the collision module, beside the shots: `throw_fire` tosses a grenade with an altitude of its own. It arcs under gravity, bounces off the ground at half speed, turns back off walls, passes over people, and goes off after 70 frames. The blast pushes every body within 40 pixels away from it, damages it, and knocks people down. The demo throws when fire is pressed with no direction held, and draws each grenade twice, its shadow on the ground and itself raised by its height. The design is in `docs/PHYSICS.md`.
+
+**How it is checked.** The tape now throws grenades after the shots. `collision.thrown` requires that no grenade is ever inside a wall and that every body within reach of a blast shows it: pushed, marked with the blast's impact, and down if on foot.
+
+**What the measurements changed.** The step's cost used to be measured over 24 quiet frames after the tape. It is now measured over every step of the tape, in a third run, and that showed a worst step of 19,004 cycles. Breaking on each routine's entry inside that one step found two causes. It was a three-car pile-up, with two pairs resolved in one frame. And each car's wheels mover cost about 1,000 cycles a frame, mostly signed multiplies turning the car's own velocity into the world's. Three exact savings followed: a multiply by zero costs a test, a speed under a pixel a frame skips the high product, and a car whose heading and speeds have not changed keeps last frame's world velocity. Frames lost over the tape fell from 81 to 37 of 800. The worst step fell to 15,436 cycles and the median to 6,413. Every body's path stayed the same to the bit: the momentum figures and the repeat check did not change. The step budgets were re-set against the new measure, and the reason is in the commit.
+
+**What went wrong on the way.**
+- The blast check added up Python booleans with `and`, which returns its last operand rather than a truth value. It counted 3 responses from 2 bodies.
+- Timing the step in the same run as the frame-driven checks made that run stop at a different point from the other one. The repeat check then failed on two runs that were never alike. The timing now has a run of its own.
+- The first blast went off out of view. Tracing it found two faults. Ground friction worked on the velocity's high byte only, so under 4 pixels a frame it took nothing away, and a grenade rolled at full speed until its fuse ran out. It now halves the whole 16-bit speed at each bounce. And the tape's drift began with a fire press while the car was nearly stopped, which the demo reads as getting out. The player had been leaving the car at frame 266, in what the docs called a drift, and the later "get out" press threw a grenade. The drift now starts at speed, and the tape was traced entry by entry until it does what its comment says.
+- The first measurement after the multiply changes matched the one before to the cycle. The module had been rebuilt, but the REU image that the demo loads it from had not. A result identical to the cycle is now read as a sign that the old build is still in use.
+
 ---
 
 ## What went wrong, and what caught it
@@ -222,6 +236,11 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | The status row goes blank in some frames | Screenshots of the traffic demo, then a log of the split's writes | Recorded with the evidence; the split's timing is the next fix |
 | The demo followed an empty body across the city | A contact sheet of the first frames | Bodies are allocated from the top; the demo keeps the index it is given |
 | A check passed without looking | The ram test found no ram where a trace showed one | The check kept its results across its two runs; results are now taken from the run that looks |
+| The blast check counted 3 responses from 2 bodies | The count itself | Python's `and` returns an operand, not a truth value; the terms are now converted to booleans |
+| Two runs of the tape stopped comparing alike | The repeat check | Timing moved to a third run, so the two compared runs are driven the same way |
+| A cost change measured identical to the cycle | The identical number | The demo loads the module from the REU image, which had not been repacked |
+| Grenades rolled at full speed until they went off | A blast out of view, then a trace | Ground friction had worked on the high byte only; it now halves the 16-bit speed |
+| The tape's drift got the player out of the car | The same trace, entry by entry | The drift starts at speed; a tap when all but stopped means get out |
 
 ---
 

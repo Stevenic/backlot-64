@@ -44,7 +44,7 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 **Traffic.** `examples/traffic` driving itself for 3,000 frames, sampled every 10: no two cars' bodies overlap, the band table matches the cars' positions and no band holds more than seven, the multiplexer drops nothing, there is traffic (at least eight cars live on average), and the player's car gets somewhere (a thousand pixels). Then driven by hand through its test byte (`joy_test`): holding up turns the car north at the next crossing, it runs at two pixels a frame, and pulling back holds it (`traffic.auto`, `traffic.by_hand`).
 
-**Physics.** `examples/physics` plays its input tape (walk, get into a sedan, ram the sports car and the truck, brake, reverse, turn, drift, stop, get out, walk). No body's box ever has a corner in a wall, judged from the world map file and the tileset's properties; the first ram conserves momentum along its axis, allowing for the engine's push; the abandoned car comes to rest and sleeps; two runs of the tape end in the same state (`physics.walls`, `physics.momentum`, `physics.rest`, `physics.repeat`). The tape ends by firing: shots are fired and stop, no shot is ever inside a wall, and every stopping point is clear of one (`collision.shots`).
+**Physics.** `examples/physics` plays its input tape (walk, get into a sedan, ram the sports car and the truck, brake, reverse, turn, drift, stop, get out, walk). No body's box ever has a corner in a wall, judged from the world map file and the tileset's properties; the first ram conserves momentum along its axis, allowing for the engine's push; the abandoned car comes to rest and sleeps; two runs of the tape end in the same state (`physics.walls`, `physics.momentum`, `physics.rest`, `physics.repeat`). The tape ends by firing: shots are fired and stop, no shot is ever inside a wall, and every stopping point is clear of one (`collision.shots`). It throws grenades too: no thrown thing is ever inside a wall, and every body within a blast's reach when it goes off is pushed and marked with the blast's impact, and knocked down if on foot (`collision.thrown`). The abandoned car must be asleep at frame 530, before the grenades reach it.
 
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
 
@@ -60,7 +60,7 @@ A change is not done until `make check` passes. A change that moves a number in 
 | `bench.mux_*` | the benchmark program: `b64_spr_end` for the harness's 32 sprites, interrupts off |
 | `mux.irq_frame` | the emulator's cycle counter from the interrupt handler's entry to its RTI, summed per frame, median of 20 |
 | `traffic.frames_lost` | frames without a callback in 3,000 of the traffic demo driving itself |
-| `physics.step_*`, `physics.frames_lost` | `phys_step` from entry to the callback's next routine, interrupts included, 24 samples after the tape; frames without a callback in 690 |
+| `physics.step_*`, `physics.frames_lost` | `phys_step` from entry to the callback's next routine (`shot_step`), interrupts included, every step of the tape in a third run (the first two are the frame-driven runs `physics.repeat` compares); frames without a callback in 800 |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.
 

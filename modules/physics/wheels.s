@@ -7,11 +7,24 @@
 ; it; grip takes that sideways speed away a frame at a time, and what grip
 ; cannot take the car slides on.  The handbrake takes most of the grip.
 wheels:
+        ldy #0
         lda pb_st,x
         and #ST_WORLD
         beq :+
         jsr to_body             ; a collision moved it: back into the car's frame
-:       ldy pb_cls,x
+        ldy #1                  ; and the world velocity is worked out again
+:       sty wv+5
+        lda pb_ang,x             ; the frame on entry: if nothing in it changes,
+        sta wv                  ; the world velocity is last frame's
+        lda pb_vll,x
+        sta wv+1
+        lda pb_vlh,x
+        sta wv+2
+        lda pb_vtl,x
+        sta wv+3
+        lda pb_vth,x
+        sta wv+4
+        ldy pb_cls,x
         ; the top speed, a quarter less off the road
         lda c_top_l,y
         sta t4
@@ -197,13 +210,33 @@ wheels:
 @skid:  lda pb_st,x
         ora #ST_SKID
         sta pb_st,x
-        jmp world
+        jmp same
 @hold:  lda #0
         sta pb_vtl,x
         sta pb_vth,x
         lda pb_st,x
         and #<~ST_SKID
         sta pb_st,x
+; same: heading and speeds as they were on entry, and no collision: the
+; world velocity from last frame stands (a car cruising, a car standing)
+same:   lda wv+5
+        bne world
+        lda pb_ang,x
+        cmp wv
+        bne world
+        lda pb_vll,x
+        cmp wv+1
+        bne world
+        lda pb_vlh,x
+        cmp wv+2
+        bne world
+        lda pb_vtl,x
+        cmp wv+3
+        bne world
+        lda pb_vth,x
+        cmp wv+4
+        bne world
+        rts
 ; world: the car's frame to the world's, v = v_long * f + v_lat * r
 world:
         lda pb_ang,x
