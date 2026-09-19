@@ -14,6 +14,7 @@
 NB      = 12                    ; bodies
 M_FOOT  = 1
 M_WHEELS = 2
+C_HULL0 = 5                     ; the first hull class (the hull mover's tables start there)
 
 ST_SKID  = $01                  ; sliding: more sideways speed than grip can take
 ST_DOWN  = $02                  ; on foot, knocked down
@@ -27,7 +28,7 @@ IN_LEFT  = $04
 IN_RIGHT = $08
 IN_FIRE  = $10
 
-WALL     = P_SOLID | P_WATER    ; what stops feet and wheels (the hull mover will invert water)
+WALL     = P_SOLID | P_WATER    ; what stops feet and wheels; the hull's walls are anything but water
 
 t0      = $80
 t1      = $81
@@ -47,7 +48,7 @@ cur     = $8F                   ; the body being worked on
 ; the body tables, at fixed addresses that every physics module and the
 ; collision module share, so a module swap keeps every body where it was
 PB_BASE = $7800
-M_HULL   = 3                    ; movers still to come
+M_HULL   = 3                    ; boats (the water module)
 M_AIR    = 4
 M_THROWN = 5
 .enum

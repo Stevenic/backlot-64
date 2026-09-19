@@ -516,6 +516,112 @@ def physics(R, port):
     R.measure("physics.frames_lost", lost)
 
 
+def boats(R, port):
+    """The water module in examples/physics built at the coast (-D COAST),
+    playing its tape: walk to the speedboat and get in, which swaps the
+    water module in over the ground module; ram the launch, turn away on the
+    propeller's wash, slide through a turn, run into the beach, get out on
+    the sand, which swaps the ground module back, and walk.  Every frame, no
+    body's box has a corner in what its mover counts as a wall: land for a
+    boat, walls and water for feet and wheels, judged from the world map
+    and the tileset's properties.  At each swap the body tables are the same
+    before and after, and the module in place is the one asked for, byte
+    for byte.  The boat slides and hits the shore; the launch is rammed; the
+    player ends on land with the ground module in.  Two runs end alike.  And
+    the step's cost and the frames lost."""
+    import re
+    world = open("build/world.map", "rb").read()
+    props = open("build/bellamar_day.bin", "rb").read()[0x2800:0x2900]
+    syms = {m.group(1): int(m.group(2), 16)
+            for f in ("build/physics_syms.inc", "build/collision_syms.inc")
+            for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open(f).read(), re.M)}
+    wsyms = {m.group(1): int(m.group(2), 16)
+             for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open("build/water_syms.inc").read(), re.M)}
+    bins = {0: open("build/physics.bin", "rb").read(), 1: open("build/water.bin", "rb").read()}
+    HW = [3, 7, 7, 9, 4, 7, 9, 4]
+    PB, PB_END = 0x7800, syms["phys_world"] + 3
+    names = ("pb_mov", "pb_cls", "pb_xl", "pb_xh", "pb_yl", "pb_yh", "pb_vtl", "pb_vth", "pb_st", "pb_hit")
+
+    def bodies(v):
+        m = {n: v.mem(syms[n], 12) for n in names}
+        return {i: {"mov": m["pb_mov"][i], "cls": m["pb_cls"][i],
+                    "x": m["pb_xl"][i] | m["pb_xh"][i] << 8, "y": m["pb_yl"][i] | m["pb_yh"][i] << 8,
+                    "vt": int.from_bytes(bytes([m["pb_vtl"][i], m["pb_vth"][i]]), "little", signed=True),
+                    "st": m["pb_st"][i], "hit": m["pb_hit"][i]} for i in range(12) if m["pb_mov"][i]}
+
+    def in_wall(b):
+        h = HW[b["cls"]]
+        for cx in (b["x"] - h, b["x"] + h):
+            for cy in (b["y"] - h, b["y"] + h):
+                p = props[world[((cy >> 5) << 11) | (cx >> 5)]]
+                if (not p & 0x40) if b["mov"] == 3 else (p & 0xC0):
+                    return True
+        return False
+
+    finals, walls, slide, spray, shore, rammed, costs, lost, swaps = [], 0, 0, 0, 0, False, [], 0, []
+    landed = None
+    for run in range(4):
+        v = Vice("build/boats-auto.prg", *TIERS[8], labels="build/boats-auto.lbl", port=port)
+        try:
+            v.frames(10)
+            t0 = v.word("tick")
+            if run == 2:                                                 # the swaps, stopped at each
+                for _ in range(2):
+                    v.run_to("use_module")
+                    before = v.mem(PB, PB_END - PB)
+                    v.run_to("swapped")
+                    after = v.mem(PB, PB_END - PB)
+                    mod = v.mem("module")[0]
+                    b = bins[mod]
+                    swaps.append((mod, before == after, v.mem(0x6000, len(b)) == b))
+                continue
+            if run == 3:                                                 # the step's cost, every step
+                for _ in range(700):
+                    a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(0x6009))[-1])
+                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
+                    costs.append(c - a)
+                continue
+            for f in range(700):
+                v.frames(1)
+                if run:
+                    continue
+                bs = bodies(v)
+                walls += sum(1 for b in bs.values() if in_wall(b))
+                p = v.mem("player")[0]
+                if p in bs and bs[p]["mov"] == 3:
+                    slide = max(slide, abs(bs[p]["vt"]))
+                    spray += bool(bs[p]["st"] & 1)
+                    shore += bool(bs[p]["st"] & 8)
+                rammed |= any(b["cls"] == 6 and b["hit"] for b in bs.values())
+            if not run:
+                lost = 700 - (v.word("tick") - t0)
+                p = v.mem("player")[0]
+                b = bodies(v)[p]
+                landed = (b["mov"], v.mem("module")[0], in_wall(b))
+            finals.append(bodies(v))
+        finally:
+            v.close()
+    R.check("boats.walls", walls == 0, f"700 frames of the tape: {walls} body-frames with a corner in its mover's walls "
+            "(land for a boat, walls and water for feet and wheels)")
+    R.check("boats.swap", len(swaps) == 2 and all(s[1] and s[2] for s in swaps) and [s[0] for s in swaps] == [1, 0],
+            f"{len(swaps)} swaps ({', '.join(('water' if s[0] else 'ground') for s in swaps)}): body tables "
+            f"{'unchanged' if all(s[1] for s in swaps) else 'CHANGED'} across each; the module in place "
+            f"{'matches' if all(s[2] for s in swaps) else 'DOES NOT match'} its binary")
+    R.check("boats.slide", slide > 64 and spray > 0, f"the speedboat's sideways speed peaked at {slide}/256 pixel a frame, "
+            f"spray for {spray} frames")
+    R.check("boats.shore", shore > 0, f"the speedboat met the shore in {shore} frames")
+    R.check("boats.ram", rammed, "the launch was rammed" if rammed else "the launch was never hit")
+    R.check("boats.landed", landed == (1, 0, False), "the player ends on foot, on land, with the ground module in"
+            if landed == (1, 0, False) else f"the player ends as mover {landed[0] if landed else '?'} with module "
+            f"{landed[1] if landed else '?'}")
+    R.check("boats.repeat", finals[0] == finals[1], "two runs of the tape end in the same state" if finals[0] == finals[1]
+            else "two runs of the tape end in different states")
+    costs.sort()
+    R.measure("boats.step_median", costs[len(costs) // 2])
+    R.measure("boats.step_worst", costs[-1])
+    R.measure("boats.frames_lost", lost)
+
+
 def mux_instrument(R, port):
     """The multiplexer's hardware test (tools/b64muxhw.py) on VICE, both test
     builds: frozen snapshots judged entry by entry from the log clock, with
@@ -623,7 +729,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats)):
             if want(name):
                 guarded(name, fn, port)
 

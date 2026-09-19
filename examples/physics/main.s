@@ -13,6 +13,14 @@
 ; reverse, left and right to steer, fire held for the handbrake, fire tapped
 ; when stopped to get out.  Assemble with -D AUTODRIVE=1 to play a recorded
 ; tape instead (the check does).
+;
+; Assembled with -D COAST=1 (make run-boats) it starts on the beach where the
+; road meets the sea, beside a moored speedboat, with a launch and a jet ski
+; at sea.  Getting into a boat fetches the water module over the ground
+; module at $6000; getting out onto land fetches the ground module back.
+; Every module is called through its jump table (PHYS_STEP and the rest), so
+; the same calls work whichever is in.  A boat steers like a car without
+; grip; down is reverse thrust.
 
 .include "b64.inc"
 .include "slots.inc"
@@ -24,10 +32,16 @@
 
 PCX     = 160                   ; the player's place on the playfield
 PCY     = 92
+.ifdef COAST
+START_X = 1700 * 32 + 16        ; the beach where the road at metatile row 1000 meets the sea
+START_Y = 1000 * 32 + 16
+SHORE   = 1704 * 32             ; the first pixel of water, all the way down the coast
+.else
 START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000
 START_Y = 1001 * 32 + 16
 LANE_E  = 1000 * 32 + 24        ; the road's eastbound lane
 LANE_W  = 1000 * 32 + 8
+.endif
 
 .segment "GAMETOP"
 player:  .res 1                 ; the body the stick drives
@@ -67,7 +81,7 @@ game_main:
         B64_SET16 b64_len, $1000
         jsr b64_fetch
         jsr col_init
-        jsr phys_init
+        jsr PHYS_INIT
         lda #<SLOT_WORLD
         sta phys_world
         lda #>SLOT_WORLD
@@ -80,6 +94,7 @@ game_main:
         sta tick
         sta tick+1
         sta driving
+        sta module
         sta joywas
         sta tape_i
         sta tape_n
@@ -100,7 +115,7 @@ game_main:
         sta phys_a
         ldy start_cls,x
         lda start_mov,x
-        jsr phys_add
+        jsr PHYS_ADD
         lda camdx               ; the first body is the player, on foot
         bne :+
         stx player
@@ -135,6 +150,18 @@ game_main:
         jsr b64_set_callback
         jmp b64_run
 
+.ifdef COAST
+; the starting bodies: the player on the beach, a speedboat moored at the
+; water's edge, a launch and a jet ski at sea, a car on the sand, two walkers
+start_mov: .byte M_FOOT, M_HULL, M_HULL, M_HULL, M_WHEELS, M_FOOT, M_FOOT, 0
+start_cls: .byte C_WALKER, C_SPEEDBOAT, C_LAUNCH, C_JETSKI, C_SEDAN, C_WALKER, C_WALKER
+start_xl:  .byte <START_X, <(SHORE + 8), <(SHORE + 130), <(SHORE + 90), <(START_X - 80), <(START_X - 40), <(START_X - 60)
+start_xh:  .byte >START_X, >(SHORE + 8), >(SHORE + 130), >(SHORE + 90), >(START_X - 80), >(START_X - 40), >(START_X - 60)
+start_yl:  .byte <START_Y, <START_Y, <(START_Y - 6), <(START_Y + 60), <(START_Y + 30), <(START_Y - 40), <(START_Y + 40)
+start_yh:  .byte >START_Y, >START_Y, >(START_Y - 6), >(START_Y + 60), >(START_Y + 30), >(START_Y - 40), >(START_Y + 40)
+start_ang: .byte 0, 0, 64, 0, 192, 0, 0
+start_col: .byte 13, 1, 7, 10, 2, 4, 3
+.else
 ; the starting bodies: the player, four parked vehicles, four walkers
 start_mov: .byte M_FOOT, M_WHEELS, M_WHEELS, M_WHEELS, M_WHEELS, M_FOOT, M_FOOT, M_FOOT, M_FOOT, 0
 start_cls: .byte C_WALKER, C_SEDAN, C_SPORTS, C_TRUCK, C_BIKE, C_WALKER, C_WALKER, C_WALKER, C_WALKER
@@ -144,6 +171,7 @@ start_yl:  .byte <START_Y, <LANE_E, <LANE_E, <LANE_E, <LANE_W, <START_Y, <START_
 start_yh:  .byte >START_Y, >LANE_E, >LANE_E, >LANE_E, >LANE_W, >START_Y, >START_Y, >START_Y, >(START_Y - 64)
 start_ang: .byte 0, 0, 0, 0, 128, 0, 0, 0, 0
 start_col: .byte 13, 2, 7, 15, 14, 4, 6, 3, 8
+.endif
 
 ; ---------------------------------------------------------------------------
 frame:
@@ -153,7 +181,7 @@ frame:
 :       jsr input
         jsr control
         jsr walkers
-        jsr phys_step
+        jsr PHYS_STEP
         jsr shot_step
         jsr follow
         jsr submit
@@ -229,16 +257,19 @@ control:
         rts
 
 ; get_in: the nearest body within 22 pixels (the collision module's
-; col_near), if it is a car; C=1 if in
+; col_near), if it is a car or a boat; C=1 if in.  A boat brings in the
+; water module.
 get_in:
         lda #22
         jsr col_near
         bcc @no
         lda pb_mov,y
         cmp #M_WHEELS
+        beq :+
+        cmp #M_HULL
         bne @no
-        sty camdx+1             ; in: the walker goes, the car is the player's
-        jsr phys_remove
+:       sty camdx+1             ; in: the walker goes, the vehicle is the player's
+        jsr PHYS_REMOVE
         ldx camdx+1
         stx player
         lda #0
@@ -247,11 +278,39 @@ get_in:
         sta driving
         lda colour,x
         sta VIC_SPR0_COLOR
+        lda pb_mov,x
+        cmp #M_HULL
+        bne :+
+        lda #1
+        jsr use_module
+:       ldx player
         sec
         rts
 @no:    ldx player
         clc
         rts
+
+; use_module: A = 0 ground, 1 water -> that physics module at $6000, unless
+; it is there already.  The body tables above it stay as they are.
+use_module:
+        cmp module
+        beq swapped
+        sta module
+        tay
+        lda mod_l,y
+        sta b64_reu
+        lda mod_m,y
+        sta b64_reu+1
+        lda mod_h,y
+        sta b64_reu+2
+        B64_SET16 b64_ptr, PHYS_BASE
+        B64_SET16 b64_len, PHYS_SIZE
+        jsr b64_fetch
+swapped:
+        rts
+mod_l:  .byte <SLOT_PHYSICS, <SLOT_WATER
+mod_m:  .byte >SLOT_PHYSICS, >SLOT_WATER
+mod_h:  .byte ^SLOT_PHYSICS, ^SLOT_WATER
 
 ; fire: a shot from the player the way it faces, 6 pixels a frame; standing
 ; still (no direction held), a grenade tossed that way instead
@@ -275,27 +334,45 @@ fire:
         ldy #2
         jmp throw_fire
 
-; get_out: a walker beside the car (18 pixels south of it); the car coasts
+; get_out: a walker 18 pixels south of the vehicle, or else west, north or
+; east, wherever its box is first clear of walls and water; none clear, the
+; player stays aboard.  The vehicle coasts; leaving a boat brings the ground
+; module back.
 get_out:
-        lda #0
-        sta pb_in,x
         stx camdx+1
+        lda #3
+        sta out_k
+@try:   ldx camdx+1
+        ldy out_k
         lda pb_xl,x
+        clc
+        adc out_dx,y
         sta phys_x
         lda pb_xh,x
+        adc out_dxh,y
         sta phys_x+1
         lda pb_yl,x
         clc
-        adc #18
+        adc out_dy,y
         sta phys_y
         lda pb_yh,x
-        adc #0
+        adc out_dyh,y
         sta phys_y+1
-        lda #64
+        jsr land
+        bcs @out
+        dec out_k
+        bpl @try
+        ldx camdx+1
+        rts
+@out:   ldy out_k
+        lda out_a,y
         sta phys_a
+        ldx camdx+1
+        lda #0
+        sta pb_in,x
         lda #M_FOOT
         ldy #C_WALKER
-        jsr phys_add
+        jsr PHYS_ADD
         bcc @no
         stx player
         lda #13
@@ -303,7 +380,54 @@ get_out:
         sta VIC_SPR0_COLOR
         lda #0
         sta driving
-@no:    rts
+        ldx camdx+1
+        lda pb_mov,x
+        cmp #M_HULL
+        bne @no
+        lda #0
+        jsr use_module
+@no:    ldx player
+        rts
+; the places tried, last first: east, north, west, south
+out_dx:  .byte 18, 0, <-18, 0
+out_dxh: .byte 0, 0, $FF, 0
+out_dy:  .byte 0, <-18, 0, 18
+out_dyh: .byte 0, $FF, 0, 0
+out_a:   .byte 0, 192, 128, 64
+
+; land: phys_x/y -> C=1 if a walker's box there (3 pixels each way) is
+; clear of walls and water, from the collision module's col_tile
+land:
+        lda #3
+        sta land_k
+@c:     ldy land_k
+        lda phys_x
+        clc
+        adc land_dx,y
+        sta col_x0
+        lda phys_x+1
+        adc land_dxh,y
+        sta col_x0+1
+        lda phys_y
+        clc
+        adc land_dy,y
+        sta col_y0
+        lda phys_y+1
+        adc land_dyh,y
+        sta col_y0+1
+        jsr col_tile
+        and #P_SOLID | P_WATER
+        bne @no
+        dec land_k
+        bpl @c
+        sec
+        rts
+@no:    clc
+        rts
+land_dx:  .byte <-3, 3, <-3, 3
+land_dxh: .byte $FF, 0, $FF, 0
+land_dy:  .byte <-3, <-3, 3, 3
+land_dyh: .byte $FF, $FF, 0, 0
 
 ; walkers: every walker but the player picks a way now and then, and turns
 ; back from a wall
@@ -667,12 +791,17 @@ submit_body:
         jsr b64_spr_add
 sb_out: rts
 
-; frame_of: X = body -> b64_reu = its sprite frame: a car at one of 16
-; headings, a walker in one of two steps
+; frame_of: X = body -> b64_reu = its sprite frame: a car or a boat at one
+; of 16 headings, a walker in one of two steps
 frame_of:
         lda pb_mov,x
+        ldy #0
         cmp #M_WHEELS
+        beq @veh
+        ldy #3
+        cmp #M_HULL
         bne @foot
+@veh:   sty veh_k
         lda pb_ang,x
         clc
         adc #8
@@ -687,14 +816,15 @@ frame_of:
         lsr
         ror b64_reu+1
         sta b64_reu+2           ; frame >> 2 for now
+        ldy veh_k
         lda b64_reu+1
         clc
-        adc #<SLOT_CARS16
+        adc veh_base,y
         sta b64_reu
         lda b64_reu+2
-        adc #>SLOT_CARS16
+        adc veh_base+1,y
         sta b64_reu+1
-        lda #^SLOT_CARS16
+        lda veh_base+2,y
         adc #0
         sta b64_reu+2
         rts
@@ -713,6 +843,7 @@ frame_of:
         adc #0
         sta b64_reu+2
         rts
+veh_base: .faraddr SLOT_CARS16, SLOT_BOATS16
 
 ; ---------------------------------------------------------------------------
 ; hud_update: what the player is doing
@@ -727,10 +858,11 @@ hud_update:
         bne @car
         ldy #0                  ; "ON FOOT"
 :       lda txt_foot,y
-        beq @show
+        beq @foot
         sta hudbuf,y
         iny
         bne :-
+@foot:  jmp @show
 @car:   ldy pb_cls,x            ; the class name
         lda cls_off,y
         tay
@@ -773,8 +905,17 @@ hud_update:
         lda pb_st,x
         and #ST_SKID
         beq @show
+        lda pb_mov,x            ; a car skids; a boat throws up spray
+        cmp #M_HULL
+        beq @spray
         ldy #3
 :       lda txt_skid,y
+        sta hudbuf+35,y
+        dey
+        bpl :-
+        bmi @show
+@spray: ldy #4
+:       lda txt_spray,y
         sta hudbuf+35,y
         dey
         bpl :-
@@ -806,13 +947,24 @@ put_dec3:
 hud_tpl:   .byte "              0.0 PX  DAMAGE 000         ", 0
 txt_foot:  .byte "ON FOOT", 0
 txt_skid:  .byte "SKID"
-cls_names: .byte "SEDAN", 0, "SPORTS", 0, "TRUCK", 0, "BIKE", 0
-cls_off:   .byte 0, 0, 6, 13, 19
+txt_spray: .byte "SPRAY"
+cls_names: .byte "SEDAN", 0, "SPORTS", 0, "TRUCK", 0, "BIKE", 0, "SPEEDBOAT", 0, "LAUNCH", 0, "JET SKI", 0
+cls_off:   .byte 0, 0, 6, 13, 19, 24, 34, 41
 tenths:    .byte "0112334456678899"
 
 ; ---------------------------------------------------------------------------
 ; the tape (AUTODRIVE): frames, then the stick
 .ifdef AUTODRIVE
+.ifdef COAST
+; walk east to the water's edge and get into the speedboat (the water module
+; comes in); out to sea and into the launch; turn away on the propeller's
+; wash; turn south-west, sliding wide, and run into the beach; drift to a
+; stop against it, get out onto the sand (the ground module comes back) and
+; walk up the beach
+tape_len:  .byte 40, 104, 1, 1, 110, 40, 40, 25, 80, 60, 1, 1, 60, 100, 0
+tape_joy:  .byte 0, IN_RIGHT, IN_FIRE, 0, IN_UP, IN_UP | IN_RIGHT, IN_UP, IN_UP | IN_RIGHT, IN_UP, 0
+           .byte IN_FIRE, 0, IN_LEFT, 0
+.else
 ; walk to the sedan and get in; drive into the others; coast, brake and
 ; reverse, turn; get up speed, then drift (the handbrake is fire held when
 ; moving: a tap when all but stopped would get out); brake to a stop, get out;
@@ -823,6 +975,7 @@ tape_joy:  .byte 0, IN_UP, IN_UP | IN_FIRE, 0, IN_UP, 0, IN_DOWN, IN_UP | IN_LEF
            .byte IN_DOWN, 0, IN_FIRE, 0, IN_RIGHT, IN_RIGHT | IN_FIRE, 0, IN_FIRE, 0, IN_UP, IN_UP | IN_FIRE, 0, IN_DOWN
            .byte IN_LEFT, 0, IN_FIRE, 0
 .endif
+.endif
 
 .segment "GAMETOP"
 shx:    .res 2
@@ -830,3 +983,7 @@ shy:    .res 2
 tapped: .res 1
 sb_x:   .res 1
 ring_r: .res 1
+module: .res 1                  ; the physics module at $6000: 0 ground, 1 water
+out_k:  .res 1
+land_k: .res 1
+veh_k:  .res 1

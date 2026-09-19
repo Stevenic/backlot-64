@@ -45,20 +45,38 @@ DEMOS = [
                 "fault, recorded with its measurements, and the next one to fix.",
     },
     {
-        "key": "physics", "prg": "build/physics-auto.prg", "skip": 20, "frames": 700, "every": 1,
+        "key": "physics", "prg": "build/physics-auto.prg", "skip": 20, "frames": 760, "every": 1,
         "title": "On foot and at the wheel",
         "source": "modules/physics", "run": "make run-physics",
-        "text": "The physics module, pinned in memory while play runs. A walker gets into a sedan and drives it into "
-                "a parked sports car, which is shoved into a truck: every one of them is a physics body with a mass, "
-                "and a collision shares the change in velocity by mass. Cars keep their speed along and across their "
-                "heading, so a hard turn or the handbrake makes them slide; walls stop them with a bounce and damage; "
-                "the surface under each body sets its grip and drag.",
-        "facts": ["no body ever in a wall over 690 frames, judged from the world map",
+        "text": "The ground physics module, pinned in memory while play runs. A walker gets into a sedan and drives "
+                "it into a parked sports car, which is shoved into a truck: every one of them is a physics body with "
+                "a mass, and a collision shares the change in velocity by mass. Cars keep their speed along and "
+                "across their heading, so a hard turn or the handbrake makes them slide. Then, on foot again, the "
+                "player fires, and tosses two grenades that arc, bounce, roll to a stop and go off, pushing and "
+                "knocking down whoever is in reach.",
+        "facts": ["no body ever in a wall over 800 frames, judged from the world map",
                   "the first ram: momentum 3,936 before, 4,032 after, the engine's push 64",
-                  "the abandoned car comes to rest and sleeps", "two runs of the tape end in the same state"],
-        "check": "physics.walls, physics.momentum, physics.rest, physics.repeat",
-        "note": "At 1 MHz this demo loses about 7 percent of frames: the physics step costs about 4,500 cycles for "
-                "nine bodies and is due a cost pass. The status row flickers for the reason given under traffic.",
+                  "no shot or grenade ever inside a wall", "two runs of the tape end in the same state"],
+        "check": "physics.*, collision.shots, collision.thrown",
+        "note": "At 1 MHz this demo loses 5 percent of frames: the step costs 6,400 cycles at the median for nine "
+                "bodies, and 15,100 in a three-car pile-up. The status row flickers for the reason given under traffic.",
+    },
+    {
+        "key": "boats", "prg": "build/boats-auto.prg", "skip": 20, "frames": 560, "every": 1,
+        "title": "Boats, and a module swap",
+        "source": "modules/physics", "run": "make run-boats",
+        "text": "The same example at the coast, where the road meets the sea. The walker gets into a speedboat, and "
+                "the water physics module is fetched over the ground module in one 6 KB DMA; every body stays where "
+                "it was, because the body tables live above what the fetch overwrites. A boat has no grip: its "
+                "sideways speed fades by a share each frame, so it slides wide through a turn and throws spray. It "
+                "rams the launch, turns away on its propeller's wash, runs into the beach and stops against it; the "
+                "player steps out onto the sand, and the ground module comes back.",
+        "facts": ["2 module swaps: body tables byte for byte the same before and after",
+                  "no boat ever touches land, no walker ever enters the water",
+                  "the speedboat's sideways speed peaks at 1.5 pixels a frame in the turn",
+                  "2 frames lost in 700, the swaps included"],
+        "check": "boats.swap, boats.walls, boats.slide, boats.shore, boats.ram, boats.landed",
+        "note": "",
     },
     {
         "key": "scroller", "prg": "build/scroll-auto.prg", "skip": 150, "frames": 600, "every": 1,

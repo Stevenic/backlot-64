@@ -23,6 +23,8 @@ slot    SHOW      $560000  build/show.bin
 slot    PHYSICS   $561000  build/physics.bin   ; the physics module, pinned at $6000 (docs/PHYSICS.md)
 slot    CARS16    $563000  build/cars16.spr    ; a sedan at 16 headings (tools/b64rot.py)
 slot    COLLISION $564000  build/collision.bin ; the collision module, for region A (docs/PHYSICS.md)
+slot    WATER     $565000  build/water.bin     ; the water physics module, swapped with PHYSICS at $6000
+slot    BOATS16   $567000  build/boats16.spr   ; a speedboat at 16 headings (tools/b64rot.py)
 slot    HEAP8     $600000  -        ; game heap on an 8 MB REU (see B64_HEAP8)
 slot    SCRATCH   $7F0000  -
 slot    HEAP16    $800000  -        ; game heap on a 16 MB REU: only when b64_plat has REU16

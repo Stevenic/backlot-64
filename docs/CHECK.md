@@ -46,6 +46,8 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 **Physics.** `examples/physics` plays its input tape (walk, get into a sedan, ram the sports car and the truck, brake, reverse, turn, drift, stop, get out, walk). No body's box ever has a corner in a wall, judged from the world map file and the tileset's properties; the first ram conserves momentum along its axis, allowing for the engine's push; the abandoned car comes to rest and sleeps; two runs of the tape end in the same state (`physics.walls`, `physics.momentum`, `physics.rest`, `physics.repeat`). The tape ends by firing: shots are fired and stop, no shot is ever inside a wall, and every stopping point is clear of one (`collision.shots`). It throws grenades too: no thrown thing is ever inside a wall, and every body within a blast's reach when it goes off is pushed and marked with the blast's impact, and knocked down if on foot (`collision.thrown`). The abandoned car must be asleep at frame 530, before the grenades reach it.
 
+**Boats.** The same example built at the coast (`build/boats-auto.prg`) plays its own tape: walk to a speedboat and get in, which swaps the water module in; ram the launch, slide through a turn, run into the beach, get out on the sand, which swaps the ground module back, and walk. No body's box ever has a corner in what its mover counts as a wall (land for a boat; walls and water for feet and wheels), judged from the world map and the tileset (`boats.walls`). A run stopped at each swap compares the body tables before and after the fetch and the module in place with its binary (`boats.swap`). The boat slides and throws spray (`boats.slide`), meets the shore (`boats.shore`), rams the launch (`boats.ram`); the player ends on foot, on land, with the ground module in (`boats.landed`); two runs end alike (`boats.repeat`).
+
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
 
 | Measured | How |
@@ -60,6 +62,7 @@ A change is not done until `make check` passes. A change that moves a number in 
 | `bench.mux_*` | the benchmark program: `b64_spr_end` for the harness's 32 sprites, interrupts off |
 | `mux.irq_frame` | the emulator's cycle counter from the interrupt handler's entry to its RTI, summed per frame, median of 20 |
 | `traffic.frames_lost` | frames without a callback in 3,000 of the traffic demo driving itself |
+| `boats.step_*`, `boats.frames_lost` | the same as the physics lines, over the coast tape's 700 steps, through the jump table at $6009 so either module is timed |
 | `physics.step_*`, `physics.frames_lost` | `phys_step` from entry to the callback's next routine (`shot_step`), interrupts included, every step of the tape in a third run (the first two are the frame-driven runs `physics.repeat` compares); frames without a callback in 800 |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.

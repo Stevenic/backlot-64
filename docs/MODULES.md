@@ -48,7 +48,7 @@ Region A ($8000-$97FF) is three 2 KB slots (four until 2026-09-18, when its top 
 | Evict | zero; the slot is overwritten |
 | Pin or unpin | one bit |
 
-The pinned area for a mode is the same format loaded into the game's module region ($6000-$7FFF, 8 KB) at mode start, so play mode can pin up to 8 KB of per-frame modules and still have the 6 KB cache for everything else. During a cutscene the $6000 region is the bitmap, so the scene's modules are all cached, which is the right shape for a scene: nothing runs per entity.
+The pinned area for a mode is the same format loaded into the game's module region ($6000-$7FFF, 8 KB) at mode start (the physics modules are the first: ground and water swap at $6000 as the player takes to the water and lands, keeping their shared state above what a load overwrites, `PHYSICS.md` section 3), so play mode can pin up to 8 KB of per-frame modules and still have the 6 KB cache for everything else. During a cutscene the $6000 region is the bitmap, so the scene's modules are all cached, which is the right shape for a scene: nothing runs per entity.
 
 Loads run from the main loop after the game callback, one slot per frame at most unless the requester is blocked, so a prefetch never costs more than a tenth of a frame. Loading never happens in an interrupt.
 

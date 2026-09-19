@@ -1,6 +1,8 @@
-; backlot-64 physics module: what a game needs to use it (docs/PHYSICS.md).
-; The module is pinned at $6000.  Its entry points and body tables are in the
-; generated build/physics_syms.inc (include both):
+; backlot-64 physics modules: what a game needs to use them (docs/PHYSICS.md).
+; A module is pinned at $6000: ground (on foot, wheels) or water (on foot,
+; hulls), swapped by fetching the other over it.  Call them through the jump
+; table below; the body tables are in the generated build/physics_syms.inc,
+; at the same addresses for every module (include both):
 ;   phys_init             every body free
 ;   phys_add              A = mover, Y = class, phys_x/y/a -> X = body, C=1
 ;   phys_remove           X = body
@@ -13,14 +15,26 @@ PHYS_SIZE       = $1800                 ; what a physics module loads: $6000-$77
 
 PHYS_NB         = 12                    ; bodies
 
+; the jump table every physics module starts with: call through it, so that
+; a game keeps working when one module is swapped for another
+PHYS_INIT       = PHYS_BASE + 0
+PHYS_ADD        = PHYS_BASE + 3
+PHYS_REMOVE     = PHYS_BASE + 6
+PHYS_STEP       = PHYS_BASE + 9
+PHYS_PUSH       = PHYS_BASE + 12
+
 M_FOOT          = 1                     ; movers
 M_WHEELS        = 2
+M_HULL          = 3
 
 C_WALKER        = 0                     ; classes (docs/PHYSICS.md section 4)
 C_SEDAN         = 1
 C_SPORTS        = 2
 C_TRUCK         = 3
 C_BIKE          = 4
+C_SPEEDBOAT     = 5
+C_LAUNCH        = 6
+C_JETSKI        = 7
 
 ST_SKID         = $01                   ; pb_st bits
 ST_DOWN         = $02

@@ -132,12 +132,17 @@ mover:
         lda mover_tab,y
         pha
         rts
+; Its own mover takes up from rest when it returns (ST_WORLD: the vehicle's
+; frame is worked out again from the world velocity, now none).
 hold:
         lda #0
         sta pb_vxl,x
         sta pb_vxh,x
         sta pb_vyl,x
         sta pb_vyh,x
+        lda pb_st,x
+        ora #ST_WORLD
+        sta pb_st,x
         rts
 
 ; rest: a body with no input and no speed for 32 frames sleeps
@@ -1237,11 +1242,11 @@ shove:
         jmp cache_check
 @done:  rts
 
-; the classes every mover shares: half sizes and masses
-; tables.  Classes: 0 a walker; 1 sedan, 2 sports car, 3 truck, 4 bike.
-;                  walk  sedan  sport  truck  bike
-; by class: 0 walker; 1 sedan, 2 sports car, 3 truck, 4 bike
-c_hw:     .byte       3,     7,     7,     9,     4
-c_hh:     .byte       3,     7,     7,     9,     4
-c_mass:   .byte       1,     8,     6,    15,     3
+; the classes every module shares, so a body keeps its box and mass through a
+; swap: 0 a walker; 1 sedan, 2 sports car, 3 truck, 4 bike (wheels); 5
+; speedboat, 6 launch, 7 jet ski (hull)
+;                  walk  sedan  sport  truck   bike  speed launch    ski
+c_hw:     .byte       3,     7,     7,     9,     4,     7,     9,     4
+c_hh:     .byte       3,     7,     7,     9,     4,     7,     9,     4
+c_mass:   .byte       1,     8,     6,    15,     3,     5,    12,     2
 kofs:     .byte 0*NB, 1*NB, 2*NB, 3*NB, 4*NB, 5*NB, 6*NB, 7*NB, 8*NB

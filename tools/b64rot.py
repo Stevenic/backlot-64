@@ -12,7 +12,7 @@ the physics module keeps (docs/PHYSICS.md).
 Colours: '2' the sprite's own colour (the body), '1' multicolour 0
 (windows, tyres: black in the examples), '3' multicolour 1 (lamps: white).
 
-usage: b64rot.py car <out.spr> [--headings 16]
+usage: b64rot.py car|boat <out.spr> [--headings 16] [--show]
 """
 import math
 import os
@@ -43,7 +43,25 @@ def car(u, v):
     return "2"
 
 
-SHAPES = {"car": car}
+def boat(u, v):
+    """The colour at (u, v): a speedboat 20 pixels long and 9 wide, a pointed
+    bow, a flat stern with the motor behind it."""
+    au, av = abs(u), abs(v)
+    if u < -10.5 or u > 10.0:
+        return "."
+    if u < -9.0:                                 # the outboard motor
+        return "1" if av <= 1.2 else "."
+    half = 4.5 if u <= 3.0 else 4.5 * (10.0 - u) / 7.0
+    if av > half:
+        return "."
+    if 1.8 <= u <= 4.2 and av <= 3.4:
+        return "3"                               # the windscreen
+    if -5.0 <= u < 1.8 and av <= 2.6:
+        return "1"                               # the cockpit
+    return "2"
+
+
+SHAPES = {"car": car, "boat": boat}
 
 
 def frames(shape, headings):

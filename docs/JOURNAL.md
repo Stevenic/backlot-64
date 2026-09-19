@@ -198,6 +198,18 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 - The first blast went off out of view. Tracing it found two faults. Ground friction worked on the velocity's high byte only, so under 4 pixels a frame it took nothing away, and a grenade rolled at full speed until its fuse ran out. It now halves the whole 16-bit speed at each bounce. And the tape's drift began with a fire press while the car was nearly stopped, which the demo reads as getting out. The player had been leaving the car at frame 266, in what the docs called a drift, and the later "get out" press threw a grenade. The drift now starts at speed, and the tape was traced entry by entry until it does what its comment says.
 - The first measurement after the multiply changes matched the one before to the cycle. The module had been rebuilt, but the REU image that the demo loads it from had not. A result identical to the cycle is now read as a sign that the old build is still in use.
 
+### 18 September, late: boats, and the first module swap
+
+**What was built.** The water module: the same core and the same on-foot mover as the ground module, with a hull mover in place of the wheels. The car's own frame of speeds (`to_body`, `world`, and the unchanged-frame shortcut) moved out of the wheels mover into `frame.s`, which both movers share. A boat has no grip. Its sideways speed loses a share of itself each frame instead of a fixed amount, so it slides out wide through a turn. Pulling back is reverse thrust, and the rudder only bites while water flows past it. The example builds a second time at the coast, where the road at row 1000 meets the sea. Getting into the speedboat fetches the water module over the ground module, and getting out onto the sand fetches the ground module back. Getting out now looks for land around the vehicle instead of assuming the pavement south of it.
+
+**How it is checked.** Seven checks on the coast tape. The one that matters most is `boats.swap`. A run stops at each swap and requires that the body tables are the same byte for byte before and after the 6 KB fetch, and that the module in place matches its binary. That is the claim the module split rests on, and it had not been tested until now.
+
+**What the measurements and the checks changed.**
+- The first tape rammed the launch and then stayed stuck against it. Pushing a heavier boat kept the speedboat below the speed at which its rudder bites, so it could not turn away. Real boats steer at low speed on the propeller's wash. The hull now turns at half rate when slow with thrust held, and not at all when drifting still.
+- The walls check failed every frame on its first run. One of the beach's walkers had been placed inside a palm tree. The check judged it from the map file, not from the module, and was right. The walker moved ten pixels.
+- `hold`, which a module runs for a mover it does not carry, zeroed the world velocity but left the car's own frame of speeds as it was. A car moving when the water module came in would have stopped, then set off again at its old speed when the ground module returned. `hold` now marks the body so that its own mover takes up from rest.
+- The city tape's frames lost rose from 34 to 40 of 800. The step's median rose by 12 cycles, from the shared entry call, and the rest came from the example's own per-body work. The limit was raised to 44, and the commit says so.
+
 ---
 
 ## What went wrong, and what caught it
@@ -241,6 +253,8 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | A cost change measured identical to the cycle | The identical number | The demo loads the module from the REU image, which had not been repacked |
 | Grenades rolled at full speed until they went off | A blast out of view, then a trace | Ground friction had worked on the high byte only; it now halves the 16-bit speed |
 | The tape's drift got the player out of the car | The same trace, entry by entry | The drift starts at speed; a tap when all but stopped means get out |
+| A rammed boat stayed stuck against the one it hit | A trace of the coast tape | Slow boats steer on the propeller's wash |
+| A walker started inside a palm tree | The coast's walls check, every frame | Moved; the check judges from the map, not the module |
 
 ---
 

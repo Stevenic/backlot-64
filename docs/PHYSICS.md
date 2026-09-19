@@ -2,7 +2,7 @@
 
 Designed 2026-09-18 with the user. A game has people on foot, cars, boats, helicopters, planes, bullets and debris; each moves by different rules, but all of them need the same things underneath: positions and velocities, the map under them, walls, each other, and an end to the work when nothing is happening. So the physics is a shared core and a set of movers, one per way of moving, in one pinned module (`modules/physics`).
 
-Status, 2026-09-18: the core, on foot and driving (the ground module), the split into modules with the body tables at fixed addresses, and the collision module with shots and grenades are built and checked (`modules/physics`, `modules/collision`, `examples/physics`, `make run-physics`). Next, in order: water, air, then debris.
+Status, 2026-09-18: the core; on foot and driving (the ground module); on foot and boats (the water module), swapped with the ground module as the player takes to the water and lands; and the collision module with shots and grenades are built and checked (`modules/physics`, `modules/collision`, `examples/physics`, `make run-physics`, `make run-boats`). Next, in order: air, then debris.
 
 ---
 
@@ -12,7 +12,7 @@ Status, 2026-09-18: the core, on foot and driving (the ground module), the split
 |---|---|---|---|
 | **foot** | the player, pedestrians, police on foot | Kinematic. Eight directions, walk and run speeds reached in a few frames, walls slide it, no momentum of its own. Knocked down by a hit: it tumbles with friction for a second, then gets up | measured in `budgets.txt` |
 | **wheels** | cars, trucks, bikes, scooters | Tyres. Speed along the heading and across it; throttle, brake and reverse; steering scaled by speed and reversed when reversing; grip takes away the sideways speed a frame at a time, and what grip cannot take the car slides on (a skid); the handbrake takes most of the grip away (a drift); the surface under it sets grip, drag and top speed | |
-| **hull** | boats, airboats | The wheels model with little grip and much drag, on water only: land is a wall. Airboats also cross marsh | planned |
+| **hull** | boats (speedboat, launch, jet ski) | The car's frame without grip: the sideways speed loses a share of itself each frame (an eighth, a quarter) instead of a fixed amount, so a boat carries its momentum through a turn and slides out wide, throwing spray. Pulling back is reverse thrust, not a brake; with the throttle off, drag takes a thirty-second of the speed a frame. The rudder bites only while water flows past it: half as much when slow, and when still only with thrust held (the propeller's wash). Land is a wall. Airboats, which also cross marsh, are still to come | measured in `budgets.txt` (`boats.*`) |
 | **air** | helicopters, planes | Altitude as a third coordinate. A helicopter hovers, climbs and moves any way; a plane keeps a minimum speed and turns harder the faster it goes. Buildings are walls only below their height. The craft is drawn raised and its shadow on the ground | planned |
 | **thrown** | bullets, thrown things, debris | Bullets step in short hops so they cannot pass through a wall, and hit the first body in their way. Thrown things arc under gravity, bounce off the ground and walls, and go off. Debris ignores everything but the ground | in the collision module (below); debris planned |
 
@@ -28,7 +28,7 @@ A body's mover is fixed when it is added; a person getting into a car is the gam
 
 **The map.** Each body keeps the property bytes of the 3 x 3 metatiles around it, fetched from the REU when it crosses into a new metatile (three 3-byte DMAs). Every question a mover asks of the map (what surface, is it a wall) is answered from that cache.
 
-**Walls.** A body is a box: half-width and half-height from its class, the same at every heading (a turning car does not grow into a wall). It moves along x, and if its box then touches a wall it goes back and its x velocity turns round with a quarter of its speed; the same along y. What a mover counts as a wall is its own: P_SOLID for feet and wheels, anything but water for a hull, nothing above a building's height for air.
+**Walls.** A body is a box: half-width and half-height from its class, the same at every heading (a turning car does not grow into a wall). It moves along x, and if its box then touches a wall it goes back and its x velocity turns round with a quarter of its speed; the same along y. What a mover counts as a wall is its own: walls and water for feet and wheels, anything but water for a hull, nothing above a building's height for air.
 
 **Each other.** Two boxes that overlap are pushed apart along the axis they overlap least, and exchange velocity along it by their masses: each gets `(1 + e) * v * m_other / (m_self + m_other)` of the closing velocity, e a quarter, with the ratio from a 16 x 16 table of masses. Each takes damage from the change. A body far lighter than the other is knocked down (feet) or simply shoved.
 
@@ -42,7 +42,7 @@ A body's mover is fixed when it is added; a person getting into a car is the gam
 
 The pinned area is 8 KB, and one module holding the core and every mover would not fit it. So the movers are grouped by the kind of play they serve, each group a module of its own: **ground** (foot and wheels), **water** (hull, and foot for docks and beaches), **air** (helicopter and plane, and foot). The core is one source that every module assembles, so each binary carries its own copy of the multiply, the map cache and the wall and pair tests. The user accepted the repetition (2026-09-18): bytes in the REU cost nothing, and each module stays small enough to pin.
 
-The body tables live at a fixed address outside the modules' code, so swapping modules when the player changes mode (on foot to a boat, a boat to a helicopter) keeps every body where it was. Beside the physics module sits the **collision** module, which reads the same tables: the questions a game and its scripts ask (does this line reach a wall, which body is at this point or in this box, is anything in this zone) and the swept test bullets need, stepping a path so a fast thing cannot pass through a wall or a body. Detection and response for moving bodies stay in the physics modules, because they happen in the same frame on the same data.
+The body tables live at a fixed address outside the modules' code, so swapping modules when the player changes mode (on foot to a boat, a boat to a helicopter) keeps every body where it was. The swap is one 6 KB fetch of $6000-$77FF; the tables at $7800, each body's map cache among them, are never touched, and the module's own workspace holds nothing from one frame to the next. A body whose mover the loaded module does not carry holds still (a car on the beach while the water module is in) and its own mover takes up from rest when its module returns. A game calls every module through the jump table at its start (`PHYS_STEP` and the rest in `physics.inc`), never at an address inside one, so the same calls work whichever module is in. The classes are shared by every module, so a body keeps its box and mass through a swap. `make check` swaps twice in the coast tape and requires that the body tables are byte for byte the same before and after each fetch and that the module in place is the one asked for (`boats.swap`). Beside the physics module sits the **collision** module, which reads the same tables: the questions a game and its scripts ask (does this line reach a wall, which body is at this point or in this box, is anything in this zone) and the swept test bullets need, stepping a path so a fast thing cannot pass through a wall or a body. Detection and response for moving bodies stay in the physics modules, because they happen in the same frame on the same data.
 
 ## 4. The module and its interface
 
@@ -91,6 +91,9 @@ Each mover has a small table of classes; a game will supply its own from its ros
 | wheels | sports | 7 x 7 | 6 | top 4.5, quick, grippy until it is not |
 | wheels | truck | 9 x 9 | 15 | top 2.5, slow to turn, rams everything |
 | wheels | bike | 4 x 4 | 3 | top 4.0, turns sharply, little grip |
+| hull | speedboat | 7 x 7 | 5 | top 4.0, slides an eighth of its sideways speed away a frame |
+| hull | launch | 9 x 9 | 12 | top 2.5, slow to turn, loses a quarter sideways |
+| hull | jet ski | 4 x 4 | 2 | top 4.5, quick to turn and to speed |
 
 ---
 
@@ -102,6 +105,8 @@ Each mover has a small table of classes; a game will supply its own from its ros
 - the first ram conserves momentum along its axis, allowing for the engine's push that frame (3,936 before, 4,032 after, the push 64, in mass x 1/256 pixel a frame);
 - the abandoned car comes to rest and sleeps (by frame 530, before the grenades);
 - two runs of the tape end in the same state.
+
+`make run-boats` is the same example built at the coast (`-D COAST`), where the road at metatile row 1000 meets the sea: sand, palms, and water from pixel 54,528 east. Its tape walks the player to a speedboat moored at the water's edge and gets in, which brings in the water module; rams the launch, turns away on the propeller's wash, slides south-west through a turn and runs into the beach; drifts to a stop against it, gets out on the sand, which brings the ground module back, and walks up the beach. Getting out tries south, west, north and east of the vehicle, 18 pixels away, for a place where a walker's box is clear of walls and water, and stays aboard if there is none. It requires that no body's box ever has a corner in what its own mover counts as a wall (land for a boat), the swaps above, that the boat slides (its sideways speed peaked at 394/256 of a pixel a frame, spray for 43 frames) and meets the shore, that the launch is rammed, that the player ends on foot on land with the ground module in, and that two runs end alike. The step costs 3,901 cycles at the median and 9,738 at worst; 2 frames of 700 are lost, the swaps among them.
 
 Measured over every step of the 800-frame tape, nine bodies with up to six awake: `phys_step` 6,357 cycles at the median and 14,922 at worst, interrupts included, and 34 frames lost in 800. The worst step is a three-car pile-up, two pairs resolved in one frame; the median is dominated by the wheels mover. The costs are budgeted (`physics.*`); the stock machine needs another pass before a game carries this many cars awake at once.
 
