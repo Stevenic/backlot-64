@@ -31,6 +31,7 @@ slot    HELISH16  $56A400  build/helish16.spr  ; its shadow, the same outline in
 slot    PLANE16   $56A800  build/plane16.spr   ; a light plane at 16 headings
 slot    PLANESH16 $56AC00  build/planesh16.spr ; its shadow
 slot    AIRBOAT16 $56B000  build/airboat16.spr ; an airboat at 16 headings
+slot    AI        $56C000  build/ai.bin        ; the AI module, for region A at $8D00 (docs/AI.md)
 slot    HEAP8     $600000  -        ; game heap on an 8 MB REU (see B64_HEAP8)
 slot    SCRATCH   $7F0000  -
 slot    HEAP16    $800000  -        ; game heap on a 16 MB REU: only when b64_plat has REU16

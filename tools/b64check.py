@@ -21,6 +21,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from b64png import diff, px                      # noqa: E402
 from b64vice import Vice, ViceError              # noqa: E402
+import b64vice                                   # noqa: E402
 import b64pack                                   # noqa: E402
 
 OUT = "build/check"
@@ -516,10 +517,13 @@ def physics(R, port):
     R.measure("physics.frames_lost", lost)
 
 
-def module_scene(port, prg, frames, swaps, extra=None, col=False):
+def module_scene(port, prg, frames, swaps, extra=None, col=False, ai=False):
     """Run examples/physics built for a scene that swaps physics modules
-    (the coast, the sky), four times: once a frame at a time, reading every
-    body each frame; again for the final state; once stopped at each swap
+    (the coast, the sky), four times: once a tick at a time (stopped where
+    the collision step returns, so no body is read half moved: an interrupt
+    can land mid-step when a tick overruns its frame; after the collision
+    step, so a shot's mark is still on the body it hit), reading every body
+    each tick; again for the final state; once stopped at each swap
     (the body tables before and after the fetch, and the module in place);
     and once timing every step through the jump table at $6009, so either
     module is timed; with col, the collision step too (shot_step to the
@@ -543,7 +547,7 @@ def module_scene(port, prg, frames, swaps, extra=None, col=False):
                     "z": m["pb_zh"][i], "st": m["pb_st"][i], "hit": m["pb_hit"][i], "ang": m["pb_ang"][i]}
                 for i in range(12) if m["pb_mov"][i]}
 
-    out = {"frames": [], "finals": [], "swaps": [], "costs": [], "col_costs": [], "lost": 0, "end": None}
+    out = {"frames": [], "finals": [], "swaps": [], "costs": [], "col_costs": [], "ai_costs": [], "lost": 0, "end": None}
     for run in range(4):
         lbl = prg[:-4] + ".lbl"
         v = Vice(prg, *TIERS[8], labels=lbl, port=port)
@@ -561,6 +565,10 @@ def module_scene(port, prg, frames, swaps, extra=None, col=False):
                 continue
             if run == 3:
                 for _ in range(frames):
+                    if ai:                               # the AI step, before the physics step
+                        a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(0x8D06))[-1])
+                        c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("after_ai"))[-1])
+                        out["ai_costs"].append(c - a)
                     a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(0x6009))[-1])
                     c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("after_step"))[-1])
                     out["costs"].append(c - a)
@@ -570,13 +578,18 @@ def module_scene(port, prg, frames, swaps, extra=None, col=False):
                         out["col_costs"].append(e - c)
                 out["costs"].sort()
                 out["col_costs"].sort()
+                out["ai_costs"].sort()
                 continue
-            for f in range(frames):
-                v.frames(1)
+            last, elapsed = v.mem(b64vice.FRAME)[0], 0
+            for f in range(frames):                  # tick by tick: judged when the physics and the
+                v.run_to("after_shots")              # collision steps are both done
+                now = v.mem(b64vice.FRAME)[0]        # the engine's frame counter is a byte
+                elapsed += (now - last) & 0xFF
+                last = now
                 if not run:
                     out["frames"].append((v.mem("player")[0], bodies(v), extra(v, syms) if extra else None))
             if not run:
-                out["lost"] = frames - (v.word("tick") - t0)
+                out["lost"] = elapsed - frames
                 out["end"] = (v.mem("player")[0], v.mem("module")[0])
             out["finals"].append(bodies(v))
         finally:
@@ -870,6 +883,97 @@ def marsh(R, port):
     R.measure("marsh.frames_lost", d["lost"])
 
 
+def crowd(R, port):
+    """The AI module (docs/AI.md) in examples/physics built with a crowd
+    (-D CROWD): people about their business, two standing talking just out
+    of earshot, officers on their beat watching for the player, a cruiser.
+    The player fires along the street (the heat goes to 2) and runs.  An
+    officer never goes on seeing the player through a wall (sight is judged
+    here from the map; the module traces a brain's sight every other turn of
+    three ticks, so its flag may lag by up to 6 ticks); the people within earshot flee and are
+    farther from the shot 60 frames on; fear reaches someone out of earshot;
+    the officers who heard close on the player, or hold within firing
+    range (80 pixels); every police shot is fired
+    by an officer who sees the player.  No body in its walls; two runs
+    alike; the AI step's cost."""
+    in_wall, _, props, _, world = scene_map()
+    AB = 0xE100
+
+    def brains(v, syms):
+        on = v.mem(syms["sh_on"], 8)
+        sx = [a | b << 8 for a, b in zip(v.mem(syms["sh_xl"], 8), v.mem(syms["sh_xh"], 8))]
+        sy = [a | b << 8 for a, b in zip(v.mem(syms["sh_yl"], 8), v.mem(syms["sh_yh"], 8))]
+        return {"beh": v.mem(AB, 12), "see": v.mem(AB + 120, 12), "team": v.mem(AB + 144, 12),
+                "heat": v.mem(AB + 196)[0], "ev": v.mem("ev_count", 8),
+                "new_shots": [(sx[k], sy[k]) for k in range(8) if on[k] == 39]}
+    d = module_scene(port, "build/crowd-auto.prg", 420, 0, brains, ai=True)
+
+    def clear(ax, ay, bx, by):
+        n = max(abs(bx - ax), abs(by - ay)) // 2 + 1
+        for k in range(n + 1):
+            x, y = ax + (bx - ax) * k // n, ay + (by - ay) * k // n
+            if props[world[((y >> 5) << 11) | (x >> 5)]] & 0x80:
+                return False
+        return True
+    frames = d["frames"]
+    walls = sum(1 for _, bs, _ in frames for b in bs.values() if in_wall(b))
+    through, run, saw = 0, {}, 0
+    for p, bs, br in frames:
+        for i, b in bs.items():
+            if br["team"][i] == 1 and br["see"][i] & 0x80 and p in bs:
+                saw += 1
+                blocked = not clear(b["x"], b["y"], bs[p]["x"], bs[p]["y"])
+                run[i] = run.get(i, 0) + 1 if blocked else 0
+                through += run[i] >= 7
+            else:
+                run[i] = 0
+    shot = next((k for k, (_, _, br) in enumerate(frames) if br["heat"] == 2), None)
+    panic = farther = spread = closed = police_shots = unseen_shots = 0
+    if shot is not None:
+        p, bs, br = frames[shot]
+        sx, sy = bs[p]["x"], bs[p]["y"]
+        civ = [i for i in bs if br["team"][i] == 0 and i != p]
+        near = [i for i in civ if max(abs(bs[i]["x"] - sx), abs(bs[i]["y"] - sy)) < 128]
+        out = [i for i in civ if i not in near]
+        later = frames[min(shot + 60, len(frames) - 1)][1]
+        for i in near:
+            if any(frames[k][2]["beh"][i] == 5 for k in range(shot, min(shot + 3, len(frames)))):
+                panic += 1
+            d0 = max(abs(bs[i]["x"] - sx), abs(bs[i]["y"] - sy))
+            d1 = max(abs(later[i]["x"] - sx), abs(later[i]["y"] - sy))
+            farther += d1 > d0
+        spread = sum(1 for i in out if any(f[2]["beh"][i] == 5 for f in frames[shot:]))
+        cops = [i for i in bs if br["team"][i] == 1 and br["beh"][i] in (6, 7)]
+        end = frames[min(shot + 100, len(frames) - 1)]
+        for i in cops:
+            d0 = max(abs(bs[i]["x"] - bs[p]["x"]), abs(bs[i]["y"] - bs[p]["y"]))
+            d1 = max(abs(end[1][i]["x"] - end[1][end[0]]["x"]), abs(end[1][i]["y"] - end[1][end[0]]["y"]))
+            closed += d1 < d0 or d1 <= 80
+        for p2, bs2, br2 in frames[shot + 1:]:
+            for (x, y) in br2["new_shots"]:
+                owner = min((i for i in bs2 if i != p2), key=lambda i: abs(bs2[i]["x"] - x) + abs(bs2[i]["y"] - y))
+                if br2["team"][owner] == 1:
+                    police_shots += 1
+                    unseen_shots += not br2["see"][owner] & 0x80
+    R.check("crowd.walls", walls == 0, f"420 frames of the tape: {walls} body-frames with a corner in its mover's walls")
+    R.check("crowd.sight", saw > 0 and through == 0, f"officers saw the player in {saw} officer-frames; {through} "
+            "of them through a wall for longer than perception lags (judged from the map)")
+    R.check("crowd.panic", shot is not None and panic == len(near) and farther == len(near) and panic > 0,
+            f"{len(near) if shot is not None else 0} people within earshot of the shot: {panic} fled at once, {farther} "
+            "farther away 60 frames on")
+    R.check("crowd.spread", spread > 0, f"{spread} people out of earshot caught the panic from others")
+    R.check("crowd.pursuit", shot is not None and closed == len(cops) and closed > 0,
+            f"{closed} of {len(cops) if shot is not None else 0} officers who heard closed on the player within 100 frames")
+    R.check("crowd.fire", police_shots > 0 and unseen_shots == 0, f"{police_shots} police shots, {unseen_shots} of them "
+            "fired by an officer who did not see the player")
+    R.check("crowd.repeat", d["finals"][0] == d["finals"][1], "two runs of the tape end in the same state"
+            if d["finals"][0] == d["finals"][1] else "two runs of the tape end in different states")
+    R.measure("crowd.ai_median", d["ai_costs"][len(d["ai_costs"]) // 2])
+    R.measure("crowd.ai_worst", d["ai_costs"][-1])
+    R.measure("crowd.step_median", d["costs"][len(d["costs"]) // 2])
+    R.measure("crowd.frames_lost", d["lost"])
+
+
 def mux_instrument(R, port):
     """The multiplexer's hardware test (tools/b64muxhw.py) on VICE, both test
     builds: frozen snapshots judged entry by entry from the log clock, with
@@ -977,7 +1081,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover), ("plane", plane), ("debris", debris), ("marsh", marsh)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover), ("plane", plane), ("debris", debris), ("marsh", marsh), ("crowd", crowd)):
             if want(name):
                 guarded(name, fn, port)
 

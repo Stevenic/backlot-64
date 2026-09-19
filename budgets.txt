@@ -109,3 +109,7 @@ debris.frames_lost             77   #    73   of 560: a city frame has no time t
 marsh.step_median            4800   #  4558   phys_step, an airboat, a speedboat and the player, over 400 steps
 marsh.step_worst             7750   #  7387
 marsh.frames_lost               2   #     0   of 400
+crowd.ai_median              6250   #  5933   AI_STEP, nine brains, over 420 ticks of the crowd scene
+crowd.ai_worst              20550   # 19556   a tick with two sight traces and a burst of decisions
+crowd.step_median           14500   # 13820   phys_step with ten bodies all moving
+crowd.frames_lost             550   #   523   over 420 ticks: the scene runs at about 20 ticks a second

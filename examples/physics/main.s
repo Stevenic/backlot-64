@@ -23,6 +23,10 @@
 ; the same calls work whichever is in.  A boat steers like a car without
 ; grip; down is reverse thrust.
 ;
+; Assembled with -D CROWD=1 (make run-crowd) the AI module drives everyone
+; but the player: people about their business, officers on their beat, a
+; cruiser; fire a shot and the city reacts (docs/AI.md).
+;
 ; Assembled with -D MARSH=1 (make run-marsh) it starts on the sand beside a
 ; marsh with an airboat on the reeds: the marsh is water to an airboat and a
 ; wall to a boat, and a speedboat at sea shows it.
@@ -49,6 +53,9 @@
 .include "../../modules/physics/physics.inc"
 .include "physics_syms.inc"
 .include "collision_syms.inc"
+.ifdef CROWD
+.include "../../modules/ai/ai.inc"
+.endif
 
 .export game_main
 
@@ -72,6 +79,10 @@ START_Y = 1001 * 32 + 16        ; the helicopter lifts off the pavement across i
 HELI_Y  = 999 * 32 + 24
 HOVER_Z = 32                    ; the height it holds, pixels
 HOVER_UNTIL = 330               ; the tick it lets go and settles
+.elseif .defined(CROWD)
+START_X = 1300 * 32 + 16        ; the city's pavement south of the road at row 1000
+START_Y = 1001 * 32 + 16
+LANE_W  = 1000 * 32 + 8
 .elseif .defined(MARSH)
 START_X = 1700 * 32 + 16        ; the sand at the north edge of the marsh (metatile rows
 START_Y = 1038 * 32 + 16        ; 1040-1087, from the sand to column 1711 in the sea)
@@ -126,6 +137,18 @@ game_main:
         B64_SET16 b64_len, $1000
         jsr b64_fetch
         jsr col_init
+.ifdef CROWD
+        B64_SET24 b64_reu, SLOT_AI      ; the AI module beside it (docs/AI.md)
+        B64_SET16 b64_ptr, AI_BASE
+        B64_SET16 b64_len, $0B00
+        jsr b64_fetch
+        jsr AI_INIT
+        ldx #7
+        lda #0
+:       sta ev_count,x
+        dex
+        bpl :-
+.endif
 .ifdef DEBRIS
         lda #6                  ; a blast throws out six pieces
         sta db_blast
@@ -190,10 +213,18 @@ game_main:
         lda #0
         sta ped_t,x
         sta ped_in,x
+.ifdef CROWD
+        txa
+        sta body_of,y
+.endif
         ldx camdx
         inx
         bne @add
-@added: B64_SET16 b64_cam_x, START_X - PCX
+@added:
+.ifdef CROWD
+        jsr brains
+.endif
+        B64_SET16 b64_cam_x, START_X - PCX
         B64_SET16 b64_cam_y, START_Y - PCY
         jsr b64_redraw
         lda #PCX + 12
@@ -249,6 +280,21 @@ start_yl:  .byte <START_Y, <HELI_Y, <(1000 * 32 + 24)
 start_yh:  .byte >START_Y, >HELI_Y, >(1000 * 32 + 24)
 start_ang: .byte 0, 0, 0
 start_col: .byte 13, 14, 2
+.elseif .defined(CROWD)
+; the starting bodies: the player; five people on the pavements, three about
+; their business and two standing talking at the edge of earshot of where
+; the player will fire, beside one within it (fear reaches them from her);
+; three officers on foot, on their beat; a police cruiser parked
+start_mov: .byte M_FOOT, M_FOOT, M_FOOT, M_FOOT, M_FOOT, M_FOOT, M_FOOT, M_FOOT, M_FOOT, M_WHEELS, 0
+start_cls: .byte C_WALKER, C_WALKER, C_WALKER, C_WALKER, C_WALKER, C_WALKER, C_WALKER, C_WALKER, C_WALKER, C_SEDAN
+start_xl:  .byte <START_X, <(START_X + 150), <(START_X - 50), <(START_X + 176), <(START_X + 194), <(START_X + 20), <(START_X + 150), <(START_X + 130), <(START_X - 140), <(START_X - 60)
+start_xh:  .byte >START_X, >(START_X + 150), >(START_X - 50), >(START_X + 176), >(START_X + 194), >(START_X + 20), >(START_X + 150), >(START_X + 130), >(START_X - 140), >(START_X - 60)
+start_yl:  .byte <START_Y, <(START_Y + 6), <START_Y, <(START_Y + 6), <(START_Y + 6), <(998 * 32 + 16), <(999 * 32 + 16), <(998 * 32 + 16), <START_Y, <LANE_W
+start_yh:  .byte >START_Y, >(START_Y + 6), >START_Y, >(START_Y + 6), >(START_Y + 6), >(998 * 32 + 16), >(999 * 32 + 16), >(998 * 32 + 16), >START_Y, >LANE_W
+start_ang: .byte 0, 0, 128, 128, 128, 128, 128, 128, 0, 128
+start_col: .byte 13, 4, 3, 8, 10, 7, 14, 14, 14, 1
+start_team: .byte T_PLAYER, T_CIVIL, T_CIVIL, T_CIVIL, T_CIVIL, T_CIVIL, T_POLICE, T_POLICE, T_POLICE, T_POLICE
+start_beh: .byte B_NONE, B_IDLE, B_WANDER, B_IDLE, B_IDLE, B_WANDER, B_WANDER, B_WANDER, B_WANDER, B_IDLE
 .elseif .defined(MARSH)
 ; the starting bodies: the player on the sand, an airboat on the reeds south
 ; of it, and a speedboat at sea that heads west into the marsh (captains)
@@ -290,7 +336,13 @@ frame:
         inc tick+1
 :       jsr input
         jsr control
+.ifdef CROWD
+        jsr AI_STEP             ; the AI drives every body but the player's
+after_ai:
+        jsr events
+.else
         jsr walkers
+.endif
 .ifdef HOVER
         jsr pilots
 .endif
@@ -470,7 +522,24 @@ fire:
         beq @toss
         lda pb_ang,x
         ldy #6
+.ifdef CROWD
+        jsr shot_fire
+        ldx player              ; heard 128 pixels away; gunfire in the street
+        lda pb_xl,x             ; raises the heat to 2: the police attack
+        sta ai_px
+        lda pb_xh,x
+        sta ai_px+1
+        lda pb_yl,x
+        sta ai_py
+        lda pb_yh,x
+        sta ai_py+1
+        lda #2
+        sta ai_heat
+        lda #128
+        jmp AI_NOISE
+.else
         jmp shot_fire
+.endif
 @toss:  lda pb_ang,x
         ldy #2
         jmp throw_fire
@@ -649,6 +718,38 @@ pilots:
 @n:     dex
         bpl @p
         rts
+.endif
+
+.ifdef CROWD
+; brains: every body's team and behaviour from the start tables; the police
+; watch for the player (their target: they see it, the heat decides)
+brains:
+        ldy #0
+@b:     lda start_mov,y
+        beq @done
+        ldx body_of,y
+        lda start_team,y
+        sta ab_team,x
+        lda start_beh,y
+        sta ab_beh,x
+        lda start_team,y
+        cmp #T_POLICE
+        bne :+
+        lda player
+        sta ab_tgt,x
+:       iny
+        bne @b
+@done:  rts
+
+; events: the AI's queue, drained each tick and counted by kind (a game's
+; scripts would decide on them; the check reads the counts)
+events:
+        jsr AI_EVENT
+        bcc @done
+        tax
+        inc ev_count,x
+        jmp events
+@done:  rts
 .endif
 
 random:
@@ -1372,7 +1473,12 @@ tenths:    .byte "0112334456678899"
 ; ---------------------------------------------------------------------------
 ; the tape (AUTODRIVE): frames, then the stick
 .ifdef AUTODRIVE
-.ifdef PLANE
+.ifdef CROWD
+; stroll east; a shot along the street: the people panic, the police turn on
+; the player; run west, the police after; stop
+tape_len:  .byte 30, 40, 1, 1, 20, 100, 200, 0
+tape_joy:  .byte 0, IN_RIGHT, IN_RIGHT | IN_FIRE, 0, 0, IN_LEFT | IN_FIRE, 0
+.elseif .defined(PLANE)
 ; walk to the plane and get in (the air module comes in); the throttle along
 ; the road; at flying speed, climb over the blocks and turn a full circle;
 ; back on the road's line, throttle back and sink onto it; brake; get out
@@ -1436,6 +1542,10 @@ shy:    .res 2
 tapped: .res 1
 sb_x:   .res 1
 ring_r: .res 1
+.ifdef CROWD
+body_of: .res 12                ; the body each start entry became
+ev_count: .res 8                ; the AI's events, by kind
+.endif
 module: .res 1                  ; the physics module at $6000: 0 ground, 1 water
 out_k:  .res 1
 land_k: .res 1

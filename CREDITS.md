@@ -17,6 +17,15 @@ Details and rankings are in `docs/PRIOR-ART.md`. Each adopted technique also car
 - **Bobbi Webber-Manners**, EightBall: the frame-pointer-relative locals scheme; the stack-machine comparison that confirmed the register model.
 - **Steve Wozniak**, SWEET16: the single-page dispatch table and push-and-return jump that the VM's first dispatcher used.
 
+## AI (docs/AI.md)
+
+- **John Amanatides and Andrew Woo**, "A Fast Voxel Traversal Algorithm for Ray Tracing" (Eurographics 1987): the grid walk the AI's line of sight uses, a metatile at a time.
+- **DMA Design**, Race'n'Chase design document (1995, released by Mike Dailly, Internet Archive): the radio call to every police car that the AI's shared police sighting follows; drone and intelligent cars.
+- **Rockstar North and DMA Design**, the wanted-level search of the GTA games (documented by the GTA wikis): one last-seen record for the force, a search around it.
+- **Tom Leonard**, "Building an AI Sensory System: Examining the Design of Thief: The Dark Project" (GDC 2003): distance, then cone, then ray, the cheapest sense first.
+- **Mark Moxon**, "Scheduling tasks with the main loop counter" (Elite on the 6502, bbcelite.com), and the NESdev forum thread "Gameplay actions that don't need to be done every frame": work spread over ticks by slot and counter, as the AI's turns of three and its alternate-turn sight traces do.
+- Studied for what comes next, with their sources listed in `docs/AI.md`: Andrew Braybrook's Paradroid diary and symmetric shadowcasting (Björn Bergström, Albert Ford) for sight from the player once a tick; Killzone's precomputed line-of-sight (Arjen Beij and Remco Straatman); Jamey Pittman's Pac-Man Dossier for target tiles on the road grid; Brian Walker's Dijkstra maps and Elijah Emerson's flow-field tiles; Andrew Fray's context steering; Damián Isla's occupancy maps; DMA Design's GTA2 map arrows and character AI.
+
 ## Ultimate 64 and C64 Ultimate
 
 - **Gideon Zweijtzer**, Gideon's Logic Architectures: the Ultimate 64, the C64 Ultimate firmware, the Ultimate Audio Register API (v0.2, 2012), the Command Interface register documentation, and the turbo control documentation. Every register address in `src/b64_plat.s`, `src/b64_pcm.s` and `src/b64_uci.s` comes from these.

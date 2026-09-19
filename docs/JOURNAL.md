@@ -262,6 +262,21 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 
 **Next, asked for during this work.** Wing suits, paragliding and parasailing. They are gliders, which fit the air module.
 
+### 18 September, night: an AI module, and ideas from other games
+
+**The asks.** "let's work on an advanced ai module now", with the gliders half built, and then, while it was being built: "work on it... scan other engines or games on the web to steal ideas". The gliders are parked in a git stash with their movers built, to be finished later.
+
+**What was built.** `modules/ai`, 2.7 KB in region A beside the collision module. It follows `PLAN.md`'s rule that scripts decide and the module executes. Each body gets a brain at a fixed address in the game's hot state. Perception runs for one body in three each tick: sight is range, a facing cone and a line of sight; hearing is a noise with a radius. The behaviours (wander, go to, follow, flee, pursue with a lead, attack, search) each end in the body's joystick byte. Whiskers steer around walls. Panic spreads among civilians. The police respond by the heat the game sets and share sightings by radio. Events go into a queue for scripts. The demo is an eighth build of the example: the player fires in the street and the city reacts.
+
+**The research.** An agent searched other games and engines and ranked sixteen ideas, with sources. The first three taken: the cheapest test first, sight traces on alternate turns, and one memory for the police force, after DMA's own design document for the game that became GTA. The rest are in `docs/AI.md` section 5, credited in `CREDITS.md`.
+
+**What the measurements changed.**
+- The first step cost 24,800 cycles at the median and 53,000 at worst, in a frame of 19,600. A profile of single ticks found that each line of sight cost about 20,000 cycles. It used the collision module's path test, built for shots that move 6 pixels a frame, stepping 4 pixels at a time. Sight became a walk over the metatiles the line crosses (after Amanatides and Woo, 1987), at 1,000 to 2,000 cycles. With the other cuts the median is 5,900 and the worst 19,600.
+- The walls check found a pedestrian inside a building. The body's map cache matched the map, and the core's wall test would have caught it. The check itself was wrong: it read the bodies at the frame counter's store, in the interrupt, which lands in the middle of a step when a tick overruns its frame. The scene checks now stop where the collision step returns, a tick at a time. The first attempt stopped after the physics step, where a shot's mark had not yet been made, and two old checks failed until the stop moved after the collision step. The first count of frames elapsed read two bytes of a one-byte counter.
+- A pedestrian ran on the spot at a building's corner: the whiskers probed only ahead of the body's centre, and the corner caught the edge of its box. They now probe both sides of the box.
+- The cruiser drove round a target inside its turning circle for 60 ticks. It now makes a three-point turn.
+- Ten moving bodies with physics and AI still do not fit a stock frame. The scene runs at about 20 ticks a second, and the budget says so.
+
 ---
 
 ## What went wrong, and what caught it
@@ -312,6 +327,9 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | The plane flew into a six-storey block | Its damage and speed in a trace | The tape climbs longer before turning |
 | Debris never settled | A piece watched tick by tick | A branch tested flags a store never set; the value is tested |
 | Empty debris loops cost the city 100 frames | Frames lost counted every 10 frames | Live pieces are counted; debris is asked for, not always on |
+| A line of sight cost more than a frame | A profile of single AI ticks | A walk over metatiles, not a 4-pixel path |
+| A check found a body inside a wall that was not | The body's cache matched the map | Scene checks read bodies only between ticks |
+| A pedestrian stuck on a building's corner | A trace of the fleeing | Whiskers probe the width of the box |
 
 ---
 

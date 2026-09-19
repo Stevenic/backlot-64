@@ -108,6 +108,21 @@ DEMOS = [
         "note": "",
     },
     {
+        "key": "crowd", "prg": "build/crowd-auto.prg", "skip": 20, "frames": 700, "every": 1,
+        "title": "The city reacts",
+        "source": "modules/ai", "run": "make run-crowd",
+        "text": "The AI module drives every body but the player's. People go about their business and officers walk "
+                "their beat. A shot along the street: the people within earshot panic and flee, and fear spreads to "
+                "those standing talking beyond it; the police, told by the heat to attack, close in, share what they "
+                "see by radio, and fire only on what they can see. A cruiser turns round in three points and joins "
+                "them.",
+        "facts": ["no officer sees through a wall, judged from the map", "everyone in earshot flees; fear spreads beyond it",
+                  "every police shot fired at a player in sight", "sight a metatile at a time: 1,000-2,000 cycles a look"],
+        "check": "crowd.sight, crowd.panic, crowd.spread, crowd.pursuit, crowd.fire",
+        "note": "Ten moving bodies with physics and AI do not fit a stock C64's frame yet: the scene runs at about 20 "
+                "ticks a second. The next cuts are in docs/AI.md.",
+    },
+    {
         "key": "marsh", "prg": "build/marsh-auto.prg", "skip": 20, "frames": 380, "every": 1,
         "title": "An airboat in the marsh",
         "source": "modules/physics", "run": "make run-marsh",
