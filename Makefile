@@ -28,9 +28,9 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll run-traffic shot-scroll palette clean check bench
+.PHONY: all assets run-scroll run-traffic run-physics shot-scroll palette clean check bench
 
-all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
+all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(REU)
 
 $(BUILD):
 	mkdir -p $(BUILD) $(BUILD)/formats
@@ -84,7 +84,7 @@ $(BUILD)/block.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -202,6 +202,28 @@ pages: all $(BUILD)/mux64.prg $(REU8)
 	$(PY) tools/b64site.py
 publish-pages: pages
 	$(PY) tools/b64site.py --publish
+
+# the physics module: pinned at $6000 (pinned.cfg), linked against the
+# engine's labels, and an include of its tables' addresses for games
+$(BUILD)/phys_tables.inc: tools/b64phystab.py | $(BUILD)
+	$(PY) tools/b64phystab.py $@
+$(BUILD)/physics.o: modules/physics/physics.s include/b64.inc $(BUILD)/phys_tables.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $@ $<
+$(BUILD)/physics.bin $(BUILD)/physics_syms.inc: $(BUILD)/physics.o $(BUILD)/overlay.prg pinned.cfg tools/b64overlay.py
+	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl pinned.cfg $(BUILD)/physics.o $(BUILD)/physics.bin --inc $(BUILD)/physics_syms.inc pb_,phys_
+$(BUILD)/cars16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64rot.py car $@
+
+$(BUILD)/physics-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -o $@ $<
+$(BUILD)/physics-auto.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D AUTODRIVE=1 -o $@ $<
+$(BUILD)/physics.prg: $(ENGINE_OBJS) $(BUILD)/physics-demo.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/physics-demo.o -m $(BUILD)/physics.map -Ln $(BUILD)/physics.lbl
+$(BUILD)/physics-auto.prg: $(ENGINE_OBJS) $(BUILD)/physics-auto.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/physics-auto.o -Ln $(BUILD)/physics-auto.lbl
+run-physics: $(BUILD)/physics.prg $(REU) $(REU8)
+	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/physics.prg
 
 run-traffic: $(BUILD)/traffic.prg $(REU) $(REU8)
 	$(X64) $(VICE_REU) -autostartprgmode 1 $(BUILD)/traffic.prg

@@ -28,7 +28,7 @@ Details and rankings are in `docs/PRIOR-ART.md`. Each adopted technique also car
 ## Hardware and platform references
 
 - **Christian Bauer**, "The MOS 6567/6569 video controller (VIC-II) and its application in the Commodore 64": badlines, sprite DMA, the timing of every VIC register. The docs audit in the roadmap is against this text.
-- **Codebase64** (codebase.c64.org): the community wiki of C64 programming idioms; its "REU Programming" and "REU registers" pages (Richard Hable, Marko Mäkelä) are the source for the REU facts in the docs, and "Seriously fast multiplication" for the table multiply.
+- **Codebase64** (codebase.c64.org): the community wiki of C64 programming idioms; its "REU Programming" and "REU registers" pages (Richard Hable, Marko Mäkelä) are the source for the REU facts in the docs, and "Seriously fast multiplication" for the quarter-square multiply in the physics module (`modules/physics`), which uses one table of squares instead of four offset tables.
 - **Commodore 64 Programmer's Reference Guide** and **Sheldon Leemon, "Mapping the Commodore 64"**: the memory map and the register descriptions.
 - **Philip "Pepto" Timmermann**: the VIC-II colour analysis (pepto.de/projects/colorvic): the 2001 palette the art uses, and the nine-level luma order the tools' `LUMA` table follows, and the PAL artefacts behind the blending rules in `docs/ART.md`.
 - **Ottis Cowper, "Mapping the Commodore 128"**: the MMU, the REC and fast mode, for the C128 platform notes in `docs/PLAN.md`.

@@ -394,6 +394,94 @@ def traffic(R, port):
             f"holding up turned it north after {turned} frames; {speed} pixels a frame; pulling back held it: {held}")
 
 
+def physics(R, port):
+    """The physics module (modules/physics) in examples/physics playing its
+    tape: walk to a sedan, get in, drive into the sports car and the truck,
+    brake, reverse, turn, drift, stop, get out, walk.  Every frame, no
+    body's box has a corner in a wall, judged here from the world map and
+    the tileset's properties, not from the module's cache.  The first ram
+    conserves momentum along the axis it happened on, to within the engine's
+    push that frame.  The abandoned car comes to rest and sleeps.  Two runs
+    of the tape end in the same state.  And the step's cost and the frames
+    it loses."""
+    import re
+    world = open("build/world.map", "rb").read()
+    props = open("build/bellamar_day.bin", "rb").read()[0x2800:0x2900]
+    syms = {m.group(1): int(m.group(2), 16)
+            for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open("build/physics_syms.inc").read(), re.M)}
+    HW, MASS = [3, 7, 7, 9, 4], [1, 8, 6, 15, 3]
+    names = ("pb_mov", "pb_cls", "pb_xf", "pb_xl", "pb_xh", "pb_yf", "pb_yl", "pb_yh",
+             "pb_vxl", "pb_vxh", "pb_vyl", "pb_vyh", "pb_st", "pb_hit")
+
+    def s16(lo, hi):
+        x = lo | hi << 8
+        return x - 65536 if x & 0x8000 else x
+
+    def bodies(v):
+        m = {n: v.mem(syms[n], 12) for n in names}
+        return {i: {"cls": m["pb_cls"][i], "x": m["pb_xl"][i] | m["pb_xh"][i] << 8, "y": m["pb_yl"][i] | m["pb_yh"][i] << 8,
+                    "fx": m["pb_xf"][i], "fy": m["pb_yf"][i],
+                    "vx": s16(m["pb_vxl"][i], m["pb_vxh"][i]), "vy": s16(m["pb_vyl"][i], m["pb_vyh"][i]),
+                    "st": m["pb_st"][i], "hit": m["pb_hit"][i]} for i in range(12) if m["pb_mov"][i]}
+
+    def in_wall(b):
+        h = HW[b["cls"]]
+        for cx in (b["x"] - h, b["x"] + h):
+            for cy in (b["y"] - h, b["y"] + h):
+                if props[world[((cy >> 5) << 11) | (cx >> 5)]] & 0xC0:
+                    return True
+        return False
+
+    finals, walls, ram, prev = [], 0, None, None
+    for run in range(2):
+        v = Vice("build/physics-auto.prg", *TIERS[8], labels="build/physics-auto.lbl", port=port)
+        try:
+            v.frames(10)                        # past the start: the module loaded, the tick counting
+            t0 = v.word("tick")
+            for f in range(690):
+                v.frames(1)
+                if run:
+                    continue
+                bs = bodies(v)
+                walls += sum(1 for b in bs.values() if in_wall(b))
+                if ram is None and prev:
+                    car = [i for i, b in bs.items() if b["cls"] == 2 and b["hit"]]
+                    if car:
+                        j = car[0]
+                        i = min((k for k in bs if bs[k]["cls"] == 1), default=None)
+                        if i is not None and i in prev and j in prev:
+                            axis = "vx" if abs(prev[i]["vx"] - prev[j]["vx"]) >= abs(prev[i]["vy"] - prev[j]["vy"]) else "vy"
+                            p0 = MASS[1] * prev[i][axis] + MASS[2] * prev[j][axis]
+                            p1 = MASS[1] * bs[i][axis] + MASS[2] * bs[j][axis]
+                            ram = (axis, p0, p1)
+                prev = bs
+            lost = 690 - (v.word("tick") - t0)
+            finals.append(bodies(v))
+            if run == 0:
+                sedan = [b for b in finals[0].values() if b["cls"] == 1]
+                asleep = bool(sedan) and all(b["st"] & 0x80 for b in sedan)
+                costs = []
+                for _ in range(24):
+                    a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["phys_step"]))[-1])
+                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("follow"))[-1])
+                    costs.append(c - a)
+                costs.sort()
+        finally:
+            v.close()
+    R.check("physics.walls", walls == 0, f"690 frames of the tape: {walls} body-frames with a corner in a wall")
+    # the sedan's engine pushes it that frame too: its mass (8) x its acceleration (8/256 px/frame) = 64;
+    # the shares of the change are 1/128ths of a table's rounding: allow 64 more
+    R.check("physics.momentum", ram is not None and abs(ram[2] - ram[1] - 64) <= 64,
+            f"the first ram, along {ram[0] if ram else '?'}: momentum {ram[1] if ram else '?'} before and "
+            f"{ram[2] if ram else '?'} after, the engine's push 64 (mass x 1/256 pixel a frame)")
+    R.check("physics.rest", asleep, "the abandoned sedan came to rest and sleeps" if asleep else "the abandoned sedan is still awake")
+    R.check("physics.repeat", finals[0] == finals[1], "two runs of the tape end in the same state" if finals[0] == finals[1]
+            else "two runs of the tape end in different states")
+    R.measure("physics.step_median", costs[len(costs) // 2])
+    R.measure("physics.step_worst", costs[-1])
+    R.measure("physics.frames_lost", lost)
+
+
 def mux_instrument(R, port):
     """The multiplexer's hardware test (tools/b64muxhw.py) on VICE, both test
     builds: frozen snapshots judged entry by entry from the log clock, with
@@ -501,7 +589,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics)):
             if want(name):
                 guarded(name, fn, port)
 

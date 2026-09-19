@@ -171,6 +171,19 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 
 **How it was checked.** `make check` runs the demo driving itself for 3,000 frames. It checks that no two cars overlap, that the band table matches the cars and holds no more than seven, that nothing is dropped, that traffic flows and that the player's car gets somewhere. It then drives the car by hand through a test byte. A six-minute run found no car standing still for longer than two light cycles.
 
+### 18 September, evening: a page of demos, and physics
+
+**The asks.** Steven: "create a demo page with videos posted to the repo. use gh-pages to display everything." Then: "next I want to start working on things like physics. let's work on a rich physics module next." Asked to identify the physics each kind of play needs (driving, flying, walking), the answer was a shared core with a mover per way of moving: foot, wheels, hull, air, thrown. Steven: "I was thinking the shared core as well, so let's start building all of this." Then, on whether collision belongs in physics: "if we have to duplicate some logic to optimize module size that's fine."
+
+**The demo site.** `tools/b64video.py` records a program in VICE through the monitor, a frame at a time with the emulator stopped, and encodes it with ffmpeg at twice the size with square pixels. `tools/b64site.py` records six demos and writes the page. Each demo names the `make check` lines that hold its numbers. `make publish-pages` puts it on the gh-pages branch, which GitHub Pages serves at stevenic.github.io/backlot-64. The videos never enter main.
+
+**Physics, first stage.** A pinned module at $6000 (`modules/physics`), loaded from the REU when play starts and linked against the engine's labels. It holds the core and two movers: foot, and wheels with grip, skids, the handbrake, and surfaces from the map's tile bits. The core covers fixed-point numbers, a quarter-square multiply, a map cache of 3 x 3 metatiles per body, walls, and collisions exchanged by mass. `examples/physics` puts a walker beside four parked vehicles and four pedestrians. The design is `docs/PHYSICS.md`.
+
+**What went wrong on the way.**
+- The body allocator hands out slots from the top, and the demo assumed the player was body 0. The camera followed an empty slot across the city.
+- The first physics step cost 13,000 cycles for nine bodies. Testing every pair in full was most of it (see PHYSICS.md section 6).
+- The first version of the check reset its results for each of its two runs. The second run does not look, so the wall check passed without having looked. Caught when the ram test reported no ram in a run where the trace showed one. Fixed, and the wall check has now really passed.
+
 ---
 
 ## What went wrong, and what caught it
@@ -207,6 +220,8 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | Cars met inside crossings | Box-overlap samples, then a frame-by-frame trace | The look-ahead uses the cars' real sizes; turns check the whole new body |
 | Two turning cars waited for each other for ever | A trace of the player's car standing still | Cars driving themselves turn only right |
 | The status row goes blank in some frames | Screenshots of the traffic demo, then a log of the split's writes | Recorded with the evidence; the split's timing is the next fix |
+| The demo followed an empty body across the city | A contact sheet of the first frames | Bodies are allocated from the top; the demo keeps the index it is given |
+| A check passed without looking | The ram test found no ram where a trace showed one | The check kept its results across its two runs; results are now taken from the run that looks |
 
 ---
 

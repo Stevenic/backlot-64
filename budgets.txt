@@ -79,3 +79,11 @@ scroll.frames_dropped          95   #    89   frames without a callback, of 800
 # fill coincide.  The scroller example alone loses 52 in 800.
 traffic.frames_lost           150   #    22   the demo's own measure: see above
 
+
+# The physics module (modules/physics, docs/PHYSICS.md, 2026-09-18) in
+# examples/physics after its tape: the player on foot, four walkers, four
+# parked vehicles asleep.  The step's cycles include the interrupts that land
+# in it.  Frames without a callback in 690.
+physics.step_median          4800   #  4521   phys_step, 9 bodies, 5 awake
+physics.step_worst           6900   #  6551
+physics.frames_lost            80   #    51   of 690: the next cost pass is due
