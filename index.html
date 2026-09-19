@@ -113,6 +113,13 @@ footer p { margin: 0; max-width: 72ch; }
       <ul class="facts"><li>2 module swaps: body tables byte for byte the same before and after</li><li>no boat ever touches land, no walker ever enters the water</li><li>the speedboat&#x27;s sideways speed peaks at 1.5 pixels a frame in the turn</li><li>2 frames lost in 700, the swaps included</li></ul>
       <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/modules/physics"><code>modules/physics</code></a></span><span>run <code>make run-boats</code></span><span>checked by <code>boats.swap, boats.walls, boats.slide, boats.shore, boats.ram, boats.landed</code></span></div>
     </article>
+    <article id="sky">
+      <div class="screen"><video src="video/sky.mp4" poster="video/sky.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="A helicopter over the roofs, recorded in VICE"></video></div>
+      <h2>A helicopter over the roofs</h2>
+      <p>The same example with a helicopter on the road. Getting in swaps the air physics module in; it keeps altitude as a third coordinate, and every building in the tileset has a height, so a block is a wall only below its roof. The helicopter climbs, flies south over a six-storey block, brakes and settles onto its roof, then flies back and sets down on the road. It is drawn raised by half its height above whatever is under it, with its shadow in black where it would stand.</p>
+      <ul class="facts"><li>no body ever inside what its mover counts as a wall, judged from the map and the heights</li><li>over the building in the air for 156 frames, on its roof at 48 pixels for 34</li><li>2 module swaps: body tables byte for byte the same</li><li>2 frames lost in 700</li></ul>
+      <div class="how"><span>source <a href="https://github.com/Stevenic/backlot-64/tree/main/modules/physics"><code>modules/physics</code></a></span><span>run <code>make run-sky</code></span><span>checked by <code>sky.walls, sky.swap, sky.flight, sky.landed</code></span></div>
+    </article>
     <article id="scroller">
       <div class="screen"><video src="video/scroller.mp4" poster="video/scroller.png" width="768" height="544" autoplay muted loop playsinline controls preload="metadata" aria-label="A 4 MB world, scrolled, recorded in VICE"></video></div>
       <h2>A 4 MB world, scrolled</h2>
@@ -150,7 +157,7 @@ footer p { margin: 0; max-width: 72ch; }
     </article>
   </div>
   <footer>
-    <p>Recorded 2026-09-18 from commit <a href="https://github.com/Stevenic/backlot-64/commit/663e16ee1c191194de3d5457f076176600c02913"><code>663e16e</code></a> with <code>make pages</code> (<code>tools/b64site.py</code>, <code>tools/b64video.py</code>).</p>
+    <p>Recorded 2026-09-18 from commit <a href="https://github.com/Stevenic/backlot-64/commit/fe3837122317807b3cfbf6583107b053b5551cc0"><code>fe38371</code></a> with <code>make pages</code> (<code>tools/b64site.py</code>, <code>tools/b64video.py</code>).</p>
     <p>backlot-64 is MIT licensed. The techniques it borrows, and where it departs from them, are credited in CREDITS.md and docs/PRIOR-ART.md.</p>
   </footer>
 </main>
