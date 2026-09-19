@@ -1,0 +1,36 @@
+; backlot-64 physics, ground: on foot and driving (docs/PHYSICS.md).
+;
+; A pinned module (pinned.cfg): loaded into the game's module region at
+; $6000 when play on land starts.  The core (core.s) is shared source that
+; every physics module assembles; the body tables live at fixed addresses
+; above the module (defs.inc), so swapping modules keeps them.
+
+.include "b64.inc"
+.include "defs.inc"
+
+.export phys_init, phys_add, phys_remove, phys_step, phys_push
+.export phys_x, phys_y, phys_a, phys_world
+.export pb_mov, pb_cls, pb_xf, pb_xl, pb_xh, pb_yf, pb_yl, pb_yh
+.export pb_vxl, pb_vxh, pb_vyl, pb_vyh, pb_vll, pb_vlh, pb_vtl, pb_vth
+.export pb_ang, pb_in, pb_st, pb_dmg, pb_hit, pb_surf, pb_tmr, pb_idle
+.export phys_sine
+
+.segment "OVERLAY"
+        jmp phys_init           ; +0
+        jmp phys_add            ; +3
+        jmp phys_remove         ; +6
+        jmp phys_step           ; +9
+        jmp phys_push           ; +12
+
+.include "core.s"
+.include "foot.s"
+.include "wheels.s"
+
+; the movers this module carries, by mover number (the address less one)
+mover_tab:  .word hold-1, foot-1, wheels-1, hold-1, hold-1, hold-1
+; what each mover counts as a wall: (properties & and) ^ eor, non-zero
+wall_and:   .byte 0, WALL, WALL, P_WATER, 0, WALL
+wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0
+
+.include "tables.s"
+.include "private.s"

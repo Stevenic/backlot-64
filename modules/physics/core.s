@@ -1,61 +1,4 @@
-; backlot-64 physics: the shared core and its movers (docs/PHYSICS.md).
-;
-; A pinned module (pinned.cfg): loaded into the game's module region at
-; $6000 when play starts.  Built so far: the core (numbers, the map under
-; each body, walls, collisions between bodies, rest) and two movers, foot
-; and wheels.  Water, air and thrown follow (docs/PHYSICS.md).
-;
-; Every routine that works on one body takes it in X and keeps it there.
-; Zero page $80-$8F is the module's.
-
-.include "b64.inc"
-
-.export phys_init, phys_add, phys_remove, phys_step, phys_push
-.export phys_x, phys_y, phys_a, phys_world
-.export pb_mov, pb_cls, pb_xf, pb_xl, pb_xh, pb_yf, pb_yl, pb_yh
-.export pb_vxl, pb_vxh, pb_vyl, pb_vyh, pb_vll, pb_vlh, pb_vtl, pb_vth
-.export pb_ang, pb_in, pb_st, pb_dmg, pb_hit, pb_surf, pb_tmr, pb_idle
-.export phys_sine
-
-NB      = 12                    ; bodies
-M_FOOT  = 1
-M_WHEELS = 2
-
-ST_SKID  = $01                  ; sliding: more sideways speed than grip can take
-ST_DOWN  = $02                  ; on foot, knocked down
-ST_WORLD = $04                  ; a collision changed the world velocity: the car's frame follows
-ST_WALL  = $08                  ; hit a wall this frame
-ST_SLEEP = $80
-
-IN_UP    = $01
-IN_DOWN  = $02
-IN_LEFT  = $04
-IN_RIGHT = $08
-IN_FIRE  = $10
-
-WALL     = P_SOLID | P_WATER    ; what stops feet and wheels (the hull mover will invert water)
-
-t0      = $80
-t1      = $81
-t2      = $82
-t3      = $83
-t4      = $84
-t5      = $85
-mr_lo   = $86                   ; umul8's product
-mr_hi   = $87
-m16     = $88                   ; smul: the 8.8 operand
-res     = $8A                   ; smul: the 8.8 product
-ua      = $8C
-ub      = $8D
-sgn     = $8E
-cur     = $8F                   ; the body being worked on
-
-.segment "OVERLAY"
-        jmp phys_init           ; +0
-        jmp phys_add            ; +3
-        jmp phys_remove         ; +6
-        jmp phys_step           ; +9
-        jmp phys_push           ; +12
+; backlot-64 physics: the core every physics module assembles (docs/PHYSICS.md).
 
 ; ---------------------------------------------------------------------------
 ; the interface
@@ -164,13 +107,8 @@ phys_step:
         sta pb_st,x
         lda #0
         sta pb_idle,x
-@awake: lda pb_mov,x
-        cmp #M_WHEELS
-        bne :+
-        jsr wheels
-        jmp @move
-:       jsr foot
-@move:  ldx cur
+@awake: jsr mover
+        ldx cur
         jsr move_x
         jsr move_y
         jsr surface
@@ -179,6 +117,26 @@ phys_step:
         dex
         bpl @b
         jmp pairs
+
+; mover: X = body.  Its mover, through the module's table (mover_tab holds
+; each address less one, for the rts); a mover the module does not carry is
+; hold, and the body keeps still until a module that has it is loaded.
+mover:
+        lda pb_mov,x
+        asl
+        tay
+        lda mover_tab+1,y
+        pha
+        lda mover_tab,y
+        pha
+        rts
+hold:
+        lda #0
+        sta pb_vxl,x
+        sta pb_vxh,x
+        sta pb_vyl,x
+        sta pb_vyh,x
+        rts
 
 ; rest: a body with no input and no speed for 32 frames sleeps
 rest:
@@ -480,6 +438,11 @@ cache_check:
 ; fall in the cached 3 x 3: column 0 if the left edge is left of the centre
 ; metatile, 2 if the right edge is right of it; rows the same.
 wall_test:
+        ldy pb_mov,x            ; what counts as a wall is the mover's
+        lda wall_and,y
+        sta w_and
+        lda wall_eor,y
+        sta w_eor
         ldy pb_cls,x
         lda pb_xl,x
         and #31
@@ -562,7 +525,8 @@ corner:
         adc ub
         tay
         lda cache,y
-        and #WALL
+        and w_and
+        eor w_eor
         rts
 
 ; surface: X = body.  pb_surf from the centre metatile: 0 road, 1 pavement,
@@ -745,124 +709,6 @@ bounce:
         ror m16
         rts
 
-; ---------------------------------------------------------------------------
-; the foot mover: eight directions, walk or run (fire), reached in a few
-; frames; knocked down, it slides to a stop and gets up after a second.
-foot:
-        lda pb_st,x
-        and #ST_DOWN
-        beq @up
-        jsr slow8
-        dec pb_tmr,x
-        bne :+
-        lda pb_st,x
-        and #<~ST_DOWN
-        sta pb_st,x
-:       rts
-@up:    lda pb_in,x
-        and #$0F
-        tay
-        lda dir_ang,y
-        cmp #$FF
-        beq :+                  ; no direction: keep the heading
-        sta pb_ang,x
-:       lda pb_in,x
-        and #IN_FIRE
-        beq :+
-        tya
-        ora #16                 ; the run table follows the walk table
-        tay
-:       lda walk_xl,y
-        sta t0
-        lda walk_xh,y
-        sta t1
-        lda walk_yl,y
-        sta t2
-        lda walk_yh,y
-        sta t3
-        lda pb_vxl,x             ; at the target already: done
-        cmp t0
-        bne @ax
-        lda pb_vxh,x
-        cmp t1
-        bne @ax
-        lda pb_vyl,x
-        cmp t2
-        bne @ax
-        lda pb_vyh,x
-        cmp t3
-        bne @ax
-        rts
-@ax:    lda pb_vxl,x             ; x toward its target by 1/4 pixel a frame
-        sta m16
-        lda pb_vxh,x
-        sta m16+1
-        jsr approach
-        lda m16
-        sta pb_vxl,x
-        lda m16+1
-        sta pb_vxh,x
-        lda t2
-        sta t0
-        lda t3
-        sta t1
-        lda pb_vyl,x
-        sta m16
-        lda pb_vyh,x
-        sta m16+1
-        jsr approach
-        lda m16
-        sta pb_vyl,x
-        lda m16+1
-        sta pb_vyh,x
-        rts
-
-; approach: m16 toward t0/t1 by FOOT_ACC at most
-FOOT_ACC = $0040
-approach:
-        lda t0
-        sec
-        sbc m16
-        sta t4
-        lda t1
-        sbc m16+1
-        sta t5                  ; target - v
-        bmi @down
-        ora t4
-        beq @done
-        lda t4
-        cmp #<FOOT_ACC
-        lda t5
-        sbc #>FOOT_ACC
-        bcc @snap               ; within a step: arrive
-        lda m16
-        clc
-        adc #<FOOT_ACC
-        sta m16
-        lda m16+1
-        adc #>FOOT_ACC
-        sta m16+1
-@done:  rts
-@down:  lda t4                  ; target below: -(t) <= step ?
-        clc
-        adc #<FOOT_ACC
-        lda t5
-        adc #>FOOT_ACC
-        bpl @snap
-        lda m16
-        sec
-        sbc #<FOOT_ACC
-        sta m16
-        lda m16+1
-        sbc #>FOOT_ACC
-        sta m16+1
-        rts
-@snap:  lda t0
-        sta m16
-        lda t1
-        sta m16+1
-        rts
-
 ; slow8: X = body, world velocity -= velocity / 8 (a tumble's friction), to rest
 slow8:
         lda pb_vxl,x
@@ -920,372 +766,6 @@ less8:
         sta m16
         sta m16+1
 @keep:  rts
-
-; ---------------------------------------------------------------------------
-; the wheels mover.  The car keeps its speed along its heading (v_long) and
-; across it (v_lat).  Throttle, brake and reverse change v_long; steering
-; turns the heading, and the momentum the car had now points partly across
-; it; grip takes that sideways speed away a frame at a time, and what grip
-; cannot take the car slides on.  The handbrake takes most of the grip.
-wheels:
-        lda pb_st,x
-        and #ST_WORLD
-        beq :+
-        jsr to_body             ; a collision moved it: back into the car's frame
-:       ldy pb_cls,x
-        ; the top speed, a quarter less off the road
-        lda c_top_l,y
-        sta t4
-        lda c_top_h,y
-        sta t5
-        lda pb_surf,x
-        cmp #2
-        bcc :+
-        lda t5
-        lsr a
-        sta t0
-        lda t4
-        ror a
-        lsr t0
-        ror a                   ; top / 4
-        sta t1
-        lda t4
-        sec
-        sbc t1
-        sta t4
-        lda t5
-        sbc t0
-        sta t5
-:       ; engine and brakes
-        lda pb_in,x
-        and #IN_UP
-        beq @nogas
-        lda pb_vll,x             ; below the top speed (signed compare)
-        cmp t4
-        lda pb_vlh,x
-        sbc t5
-        bvc :+
-        eor #$80
-:       bpl @steer
-        lda pb_vll,x
-        clc
-        adc c_acc,y
-        sta pb_vll,x
-        lda pb_vlh,x
-        adc #0
-        sta pb_vlh,x
-        jmp @steer
-@nogas: lda pb_in,x
-        and #IN_DOWN
-        beq @coast
-        lda pb_vlh,x
-        bmi @back
-        ora pb_vll,x
-        beq @back
-        lda pb_vll,x             ; braking, to a stop
-        sec
-        sbc c_brk,y
-        sta pb_vll,x
-        lda pb_vlh,x
-        sbc #0
-        sta pb_vlh,x
-        bpl @steer
-        lda #0
-        sta pb_vll,x
-        sta pb_vlh,x
-        jmp @steer
-@back:  lda pb_vll,x             ; reverse, to -c_rev
-        clc
-        adc c_rev,y
-        lda pb_vlh,x
-        adc #0
-        bmi @steer              ; v + rev < 0: already at the reverse limit
-        lda pb_vll,x
-        sec
-        sbc c_acc,y
-        sta pb_vll,x
-        lda pb_vlh,x
-        sbc #0
-        sta pb_vlh,x
-        jmp @steer
-@coast: jsr coast
-@steer: lda pb_in,x
-        and #IN_LEFT | IN_RIGHT
-        bne :+
-        jmp @grip
-:       ; how far it turns: none when nearly still, half when slow
-        lda pb_vlh,x
-        sta t1
-        lda pb_vll,x
-        sta t0
-        lda t1
-        bpl :+
-        lda #0
-        sec
-        sbc t0
-        sta t0
-        lda #0
-        sbc t1
-        sta t1
-:       lda c_turn,y
-        ldy t1
-        bne @full
-        ldy t0
-        cpy #$60
-        bcc @grip
-        lsr a
-        bne @full
-        lda #1
-@full:  sta t2
-        lda pb_in,x              ; left is anticlockwise
-        and #IN_LEFT
-        beq :+
-        lda #0
-        sec
-        sbc t2
-        sta t2
-:       lda pb_vlh,x             ; backing up turns the other way
-        bpl :+
-        lda #0
-        sec
-        sbc t2
-        sta t2
-:       lda pb_ang,x
-        clc
-        adc t2
-        sta pb_ang,x
-        ; the velocity stays where it was: in the turned frame part of it is
-        ; sideways, v_lat -= v_long * sin(d)
-        lda pb_vll,x
-        sta m16
-        lda pb_vlh,x
-        sta m16+1
-        ldy t2
-        lda phys_sine,y
-        jsr smul
-        lda pb_vtl,x
-        sec
-        sbc res
-        sta pb_vtl,x
-        lda pb_vth,x
-        sbc res+1
-        sta pb_vth,x
-@grip:  lda pb_in,x               ; the handbrake slows it
-        and #IN_FIRE
-        beq :+
-        jsr coast
-:       ldy pb_cls,x             ; grip: less off the road, a quarter with the handbrake
-        lda c_grip,y
-        ldy pb_surf,x
-        cpy #2
-        bcc :+
-        lsr a
-:       sta t0
-        lda pb_in,x
-        and #IN_FIRE
-        beq :+
-        lsr t0
-        lsr t0
-:       lda pb_vth,x             ; |v_lat| <= grip: it holds
-        bmi @left
-        bne @slide
-        lda pb_vtl,x
-        cmp t0
-        bcc @hold
-        beq @hold
-@slide: lda pb_vtl,x             ; sliding right: v_lat -= grip
-        sec
-        sbc t0
-        sta pb_vtl,x
-        lda pb_vth,x
-        sbc #0
-        sta pb_vth,x
-        jmp @skid
-@left:  cmp #$FF
-        bne @slidel
-        lda pb_vtl,x
-        clc
-        adc t0
-        bcs @hold               ; within grip of zero
-@slidel:
-        lda pb_vtl,x
-        clc
-        adc t0
-        sta pb_vtl,x
-        lda pb_vth,x
-        adc #0
-        sta pb_vth,x
-@skid:  lda pb_st,x
-        ora #ST_SKID
-        sta pb_st,x
-        jmp world
-@hold:  lda #0
-        sta pb_vtl,x
-        sta pb_vth,x
-        lda pb_st,x
-        and #<~ST_SKID
-        sta pb_st,x
-; world: the car's frame to the world's, v = v_long * f + v_lat * r
-world:
-        lda pb_ang,x
-        jsr sin_cos
-        lda pb_vll,x
-        sta m16
-        lda pb_vlh,x
-        sta m16+1
-        lda t1
-        jsr smul                ; v_long cos
-        lda res
-        sta pb_vxl,x
-        lda res+1
-        sta pb_vxh,x
-        lda pb_vll,x
-        sta m16
-        lda pb_vlh,x
-        sta m16+1
-        lda t0
-        jsr smul                ; v_long sin
-        lda res
-        sta pb_vyl,x
-        lda res+1
-        sta pb_vyh,x
-        lda pb_vtl,x
-        ora pb_vth,x
-        beq @done
-        lda pb_vtl,x             ; vx -= v_lat sin
-        sta m16
-        lda pb_vth,x
-        sta m16+1
-        lda t0
-        jsr smul
-        lda pb_vxl,x
-        sec
-        sbc res
-        sta pb_vxl,x
-        lda pb_vxh,x
-        sbc res+1
-        sta pb_vxh,x
-        lda pb_vtl,x             ; vy += v_lat cos
-        sta m16
-        lda pb_vth,x
-        sta m16+1
-        lda t1
-        jsr smul
-        lda pb_vyl,x
-        clc
-        adc res
-        sta pb_vyl,x
-        lda pb_vyh,x
-        adc res+1
-        sta pb_vyh,x
-@done:  rts
-
-; to_body: X = body.  v_long = vx cos + vy sin, v_lat = vy cos - vx sin
-to_body:
-        lda pb_st,x
-        and #<~ST_WORLD
-        sta pb_st,x
-        lda pb_ang,x
-        jsr sin_cos
-        lda pb_vxl,x
-        sta m16
-        lda pb_vxh,x
-        sta m16+1
-        lda t1
-        jsr smul
-        lda res
-        sta pb_vll,x
-        lda res+1
-        sta pb_vlh,x
-        lda pb_vyl,x
-        sta m16
-        lda pb_vyh,x
-        sta m16+1
-        lda t0
-        jsr smul
-        lda pb_vll,x
-        clc
-        adc res
-        sta pb_vll,x
-        lda pb_vlh,x
-        adc res+1
-        sta pb_vlh,x
-        lda pb_vyl,x
-        sta m16
-        lda pb_vyh,x
-        sta m16+1
-        lda t1
-        jsr smul
-        lda res
-        sta pb_vtl,x
-        lda res+1
-        sta pb_vth,x
-        lda pb_vxl,x
-        sta m16
-        lda pb_vxh,x
-        sta m16+1
-        lda t0
-        jsr smul
-        lda pb_vtl,x
-        sec
-        sbc res
-        sta pb_vtl,x
-        lda pb_vth,x
-        sbc res+1
-        sta pb_vth,x
-        rts
-
-; coast: X = body.  Rolling: v_long -= v_long / 64 and 1/256 more, to a stop
-coast:
-        lda pb_vlh,x
-        sta t1
-        lda pb_vll,x
-        sta t0
-        ldy #6
-:       lda t1
-        cmp #$80
-        ror t1
-        ror t0
-        dey
-        bne :-
-        lda pb_vlh,x
-        bmi @neg
-        lda pb_vll,x
-        sec
-        sbc t0
-        sta pb_vll,x
-        lda pb_vlh,x
-        sbc t1
-        sta pb_vlh,x
-        lda pb_vll,x             ; and one 256th
-        sec
-        sbc #1
-        sta pb_vll,x
-        lda pb_vlh,x
-        sbc #0
-        sta pb_vlh,x
-        bpl @done
-        jmp @stop
-@neg:   lda pb_vll,x
-        sec
-        sbc t0
-        sta pb_vll,x
-        lda pb_vlh,x
-        sbc t1
-        sta pb_vlh,x
-        lda pb_vll,x
-        clc
-        adc #1
-        sta pb_vll,x
-        lda pb_vlh,x
-        adc #0
-        sta pb_vlh,x
-        bmi @done
-@stop:  lda #0
-        sta pb_vll,x
-        sta pb_vlh,x
-@done:  ldy pb_cls,x
-        rts
 
 ; ---------------------------------------------------------------------------
 ; each other.  pairs: every two bodies whose boxes overlap, one of them
@@ -1744,100 +1224,11 @@ shove:
         jmp cache_check
 @done:  rts
 
-; ---------------------------------------------------------------------------
+; the classes every mover shares: half sizes and masses
 ; tables.  Classes: 0 a walker; 1 sedan, 2 sports car, 3 truck, 4 bike.
 ;                  walk  sedan  sport  truck  bike
+; by class: 0 walker; 1 sedan, 2 sports car, 3 truck, 4 bike
 c_hw:     .byte       3,     7,     7,     9,     4
 c_hh:     .byte       3,     7,     7,     9,     4
 c_mass:   .byte       1,     8,     6,    15,     3
-c_top_l:  .byte       0,  $80,   $80,    $80,     0      ; top speed, 8.8: 3.5, 4.5, 2.5, 4.0
-c_top_h:  .byte       0,    3,     4,      2,     4
-c_acc:    .byte       0,    8,    12,      4,    10
-c_brk:    .byte       0,   24,    32,     16,    24
-c_rev:    .byte       0,  $C0,   $C0,   $A0,   $A0      ; top speed in reverse, 1/256 pixel a frame
-c_turn:   .byte       0,    3,     3,      2,     4
-c_grip:   .byte       0,  $28,   $30,    $20,   $18
-
-; foot: the direction bits (up 1, down 2, left 4, right 8) -> heading, $FF none
-dir_ang:  .byte $FF, 192, 64, $FF, 128, 160, 96, 128, 0, 224, 32, 0, $FF, 192, 64, $FF
-; walk, then run: target velocity per direction, 8.8 (1.0 and 1.75; 0.71 and 1.24 diagonal)
-W1 = $0100
-W7 = $00B5
-R1 = $01C0
-R7 = $013D
-walk_xl:  .byte 0, 0, 0, 0, <-W1, <-W7, <-W7, <-W1, <W1, <W7, <W7, <W1, 0, 0, 0, 0
-          .byte 0, 0, 0, 0, <-R1, <-R7, <-R7, <-R1, <R1, <R7, <R7, <R1, 0, 0, 0, 0
-walk_xh:  .byte 0, 0, 0, 0, >-W1, >-W7, >-W7, >-W1, >W1, >W7, >W7, >W1, 0, 0, 0, 0
-          .byte 0, 0, 0, 0, >-R1, >-R7, >-R7, >-R1, >R1, >R7, >R7, >R1, 0, 0, 0, 0
-walk_yl:  .byte 0, <-W1, <W1, 0, 0, <-W7, <W7, 0, 0, <-W7, <W7, 0, 0, <-W1, <W1, 0
-          .byte 0, <-R1, <R1, 0, 0, <-R7, <R7, 0, 0, <-R7, <R7, 0, 0, <-R1, <R1, 0
-walk_yh:  .byte 0, >-W1, >W1, 0, 0, >-W7, >W7, 0, 0, >-W7, >W7, 0, 0, >-W1, >W1, 0
-          .byte 0, >-R1, >R1, 0, 0, >-R7, >R7, 0, 0, >-R7, >R7, 0, 0, >-R1, >R1, 0
-
 kofs:     .byte 0*NB, 1*NB, 2*NB, 3*NB, 4*NB, 5*NB, 6*NB, 7*NB, 8*NB
-
-.segment "PTAB"
-; f(x) = x * x / 4 for x = 0-511, low bytes then high bytes (page-aligned)
-f_lo:
-.repeat 512, i
-        .byte <((i * i) / 4)
-.endrepeat
-f_hi:
-.repeat 512, i
-        .byte >((i * i) / 4)
-.endrepeat
-.include "phys_tables.inc"
-
-.segment "PDATA"
-phys_x:     .res 2              ; phys_add and phys_push take their input here
-phys_y:     .res 2
-phys_a:     .res 1
-phys_world: .res 3              ; the world map's REU address (SLOT_WORLD)
-pb_mov:  .res NB
-pb_cls:  .res NB
-pb_xf:   .res NB
-pb_xl:   .res NB
-pb_xh:   .res NB
-pb_yf:   .res NB
-pb_yl:   .res NB
-pb_yh:   .res NB
-pb_vxl:  .res NB
-pb_vxh:  .res NB
-pb_vyl:  .res NB
-pb_vyh:  .res NB
-pb_vll:  .res NB
-pb_vlh:  .res NB
-pb_vtl:  .res NB
-pb_vth:  .res NB
-pb_ang:  .res NB
-pb_in:   .res NB
-pb_st:   .res NB
-pb_idle: .res NB
-pb_dmg:  .res NB
-pb_hit:  .res NB
-pb_surf: .res NB
-pb_tmr:  .res NB
-pb_cmx:  .res NB
-pb_cmy:  .res NB
-cache:  .res 9 * NB
-cache_row: .res 3
-save_x: .res 2
-save_f: .res 1
-pi:     .res 1
-pj:     .res 1
-ox:     .res 1
-oy:     .res 1
-dx:     .res 2
-dy:     .res 2
-axis:   .res 1
-ov:     .res 1
-nsgn:   .res 1
-si:     .res 1
-sj:     .res 1
-rel:    .res 2
-plist:  .res NB
-pn:     .res 1
-pa:     .res 1
-pb:     .res 1
-push_j: .res 1
-cl_x:   .res 1

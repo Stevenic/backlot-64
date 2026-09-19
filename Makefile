@@ -207,8 +207,9 @@ publish-pages: pages
 # engine's labels, and an include of its tables' addresses for games
 $(BUILD)/phys_tables.inc: tools/b64phystab.py | $(BUILD)
 	$(PY) tools/b64phystab.py $@
-$(BUILD)/physics.o: modules/physics/physics.s include/b64.inc $(BUILD)/phys_tables.inc | $(BUILD)
-	$(AS) -g -t c64 $(INC) -o $@ $<
+PHYS_SRCS = modules/physics/defs.inc modules/physics/core.s modules/physics/foot.s modules/physics/wheels.s modules/physics/tables.s modules/physics/private.s
+$(BUILD)/physics.o: modules/physics/ground.s $(PHYS_SRCS) include/b64.inc $(BUILD)/phys_tables.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
 $(BUILD)/physics.bin $(BUILD)/physics_syms.inc: $(BUILD)/physics.o $(BUILD)/overlay.prg pinned.cfg tools/b64overlay.py
 	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl pinned.cfg $(BUILD)/physics.o $(BUILD)/physics.bin --inc $(BUILD)/physics_syms.inc pb_,phys_
 $(BUILD)/cars16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
