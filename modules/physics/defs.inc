@@ -81,6 +81,7 @@ M_THROWN = 5
         k_zh
         k_vzl
         k_vzh
+        k_hw                    ; half size (boxes are square), from the class, for the collision module
         k_count
 .endenum
 pb_mov  = PB_BASE + k_mov * NB
@@ -113,6 +114,7 @@ pb_zl   = PB_BASE + k_zl * NB
 pb_zh   = PB_BASE + k_zh * NB
 pb_vzl  = PB_BASE + k_vzl * NB
 pb_vzh  = PB_BASE + k_vzh * NB
+pb_hw   = PB_BASE + k_hw * NB
 cache   = PB_BASE + k_count * NB        ; 9 entries a body: the 3 x 3 metatiles' properties
 phys_x  = cache + 9 * NB                ; phys_add and phys_push take their input here
 phys_y  = phys_x + 2
@@ -120,3 +122,7 @@ phys_a  = phys_y + 2
 phys_world = phys_a + 1                 ; the world map's REU address (SLOT_WORLD)
 PB_END  = phys_world + 3
 .assert PB_END <= $7C00, error, "the body tables outgrow their place"
+; the tables every physics module carries at the same addresses (pinned.cfg's
+; PTAB at $7000): other modules may read them
+PHYS_SINE  = $7400
+PHYS_SHARE = $7500

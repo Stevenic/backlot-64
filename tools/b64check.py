@@ -408,7 +408,8 @@ def physics(R, port):
     world = open("build/world.map", "rb").read()
     props = open("build/bellamar_day.bin", "rb").read()[0x2800:0x2900]
     syms = {m.group(1): int(m.group(2), 16)
-            for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open("build/physics_syms.inc").read(), re.M)}
+            for f in ("build/physics_syms.inc", "build/collision_syms.inc")
+            for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open(f).read(), re.M)}
     HW, MASS = [3, 7, 7, 9, 4], [1, 8, 6, 15, 3]
     names = ("pb_mov", "pb_cls", "pb_xf", "pb_xl", "pb_xh", "pb_yf", "pb_yl", "pb_yh",
              "pb_vxl", "pb_vxh", "pb_vyl", "pb_vyh", "pb_st", "pb_hit")
@@ -433,17 +434,29 @@ def physics(R, port):
         return False
 
     finals, walls, ram, prev = [], 0, None, None
+    shots_in_wall, fired, stops, bad_stops = 0, 0, 0, 0
+
+    def solid(x, y):
+        return props[world[((y >> 5) << 11) | (x >> 5)]] & 0x80
     for run in range(2):
         v = Vice("build/physics-auto.prg", *TIERS[8], labels="build/physics-auto.lbl", port=port)
         try:
             v.frames(10)                        # past the start: the module loaded, the tick counting
             t0 = v.word("tick")
-            for f in range(690):
+            for f in range(760):
                 v.frames(1)
                 if run:
                     continue
                 bs = bodies(v)
                 walls += sum(1 for b in bs.values() if in_wall(b))
+                on = v.mem(syms["sh_on"], 8)
+                sx = [a | b << 8 for a, b in zip(v.mem(syms["sh_xl"], 8), v.mem(syms["sh_xh"], 8))]
+                sy = [a | b << 8 for a, b in zip(v.mem(syms["sh_yl"], 8), v.mem(syms["sh_yh"], 8))]
+                fired += sum(1 for k in range(8) if on[k] == 39)      # fired this frame (40, less one step)
+                shots_in_wall += sum(1 for k in range(8) if on[k] and solid(sx[k], sy[k]))
+                if v.mem(syms["fx_t"])[0] == 6:                          # a shot stopped this frame
+                    stops += 1
+                    bad_stops += bool(solid(v.word(syms["fx_x"]), v.word(syms["fx_y"])))
                 if ram is None and prev:
                     car = [i for i, b in bs.items() if b["cls"] == 2 and b["hit"]]
                     if car:
@@ -455,7 +468,7 @@ def physics(R, port):
                             p1 = MASS[1] * bs[i][axis] + MASS[2] * bs[j][axis]
                             ram = (axis, p0, p1)
                 prev = bs
-            lost = 690 - (v.word("tick") - t0)
+            lost = 760 - (v.word("tick") - t0)
             finals.append(bodies(v))
             if run == 0:
                 sedan = [b for b in finals[0].values() if b["cls"] == 1]
@@ -463,12 +476,15 @@ def physics(R, port):
                 costs = []
                 for _ in range(24):
                     a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["phys_step"]))[-1])
-                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("follow"))[-1])
+                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
                     costs.append(c - a)
                 costs.sort()
         finally:
             v.close()
-    R.check("physics.walls", walls == 0, f"690 frames of the tape: {walls} body-frames with a corner in a wall")
+    R.check("physics.walls", walls == 0, f"760 frames of the tape: {walls} body-frames with a corner in a wall")
+    R.check("collision.shots", fired > 0 and stops > 0 and shots_in_wall == 0 and bad_stops == 0,
+            f"{fired} shots fired, {stops} stopped; {shots_in_wall} shot-frames inside a wall, "
+            f"{bad_stops} stopping points inside one")
     # the sedan's engine pushes it that frame too: its mass (8) x its acceleration (8/256 px/frame) = 64;
     # the shares of the change are 1/128ths of a table's rounding: allow 64 more
     R.check("physics.momentum", ram is not None and abs(ram[2] - ram[1] - 64) <= 64,

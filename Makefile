@@ -84,7 +84,7 @@ $(BUILD)/block.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -212,12 +212,17 @@ $(BUILD)/physics.o: modules/physics/ground.s $(PHYS_SRCS) include/b64.inc $(BUIL
 	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
 $(BUILD)/physics.bin $(BUILD)/physics_syms.inc: $(BUILD)/physics.o $(BUILD)/overlay.prg pinned.cfg tools/b64overlay.py
 	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl pinned.cfg $(BUILD)/physics.o $(BUILD)/physics.bin --inc $(BUILD)/physics_syms.inc pb_,phys_
+# the collision module: region A ($8000), beside a physics module
+$(BUILD)/collision.o: modules/collision/collision.s modules/physics/defs.inc include/b64.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -I modules/physics -o $@ $<
+$(BUILD)/collision.bin $(BUILD)/collision_syms.inc: $(BUILD)/collision.o $(BUILD)/overlay.prg overlay.cfg tools/b64overlay.py
+	$(PY) tools/b64overlay.py $(BUILD)/overlay.lbl overlay.cfg $(BUILD)/collision.o $(BUILD)/collision.bin --inc $(BUILD)/collision_syms.inc col_,sh_,shot_,fx_,NS
 $(BUILD)/cars16.spr: tools/b64rot.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64rot.py car $@
 
-$(BUILD)/physics-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc | $(BUILD)
+$(BUILD)/physics-demo.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -o $@ $<
-$(BUILD)/physics-auto.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc | $(BUILD)
+$(BUILD)/physics-auto.o: examples/physics/main.s include/b64.inc $(BUILD)/slots.inc modules/physics/physics.inc $(BUILD)/physics_syms.inc $(BUILD)/collision_syms.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -D AUTODRIVE=1 -o $@ $<
 $(BUILD)/physics.prg: $(ENGINE_OBJS) $(BUILD)/physics-demo.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/physics-demo.o -m $(BUILD)/physics.map -Ln $(BUILD)/physics.lbl

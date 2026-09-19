@@ -51,6 +51,8 @@ phys_add:
         sta pb_yh,x
         lda phys_a
         sta pb_ang,x
+        lda c_hw,y              ; the half size, for the collision module
+        sta pb_hw,x
         stx cur
         jsr cache_load
         jsr surface

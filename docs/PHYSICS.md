@@ -2,7 +2,7 @@
 
 Designed 2026-09-18 with the user. A game has people on foot, cars, boats, helicopters, planes, bullets and debris; each moves by different rules, but all of them need the same things underneath: positions and velocities, the map under them, walls, each other, and an end to the work when nothing is happening. So the physics is a shared core and a set of movers, one per way of moving, in one pinned module (`modules/physics`).
 
-Status, 2026-09-18: the core, on foot and driving are built and checked (`modules/physics`, `examples/physics`, `make run-physics`). Next, in order: the split into modules below, the collision service, thrown and fired, water, air.
+Status, 2026-09-18: the core, on foot and driving (the ground module), the split into modules with the body tables at fixed addresses, and the collision module with shots are built and checked (`modules/physics`, `modules/collision`, `examples/physics`, `make run-physics`). Next, in order: thrown things and debris, water, air.
 
 ---
 
@@ -59,6 +59,23 @@ Physics runs every frame for every body, so it is pinned (`MODULES.md` section 1
 The body table is a set of arrays at addresses the build exports (`build/physics_syms.inc`, beside the constants in `modules/physics/physics.inc`), so a game reads positions, headings and flags directly and writes each body's input byte: bit 0 up or throttle, 1 down or brake, 2 left, 3 right, 4 fire (run, handbrake).
 
 ---
+
+### The collision module
+
+`modules/collision`, 1.6 KB in region A at $8000, zero page $90-$9F, reading the body tables at their fixed addresses. Its jump table:
+
+| Entry | Offset | In | Out |
+|---|---|---|---|
+| `col_init` | +0 | | no shots |
+| `col_line` | +3 | `col_x0/y0` to `col_x1/y1` (at most 255 pixels a side), `col_mask` (wall bits), `col_skip` (a body to ignore, $FF none) | C=1 on a hit: `col_body` (or $FF for a wall), `col_hx/hy` (the last clear point, or the point in the body) |
+| `col_point` | +6 | `col_x0/y0`, `col_skip` | C=1, `col_body`: a body whose box holds the point |
+| `col_box` | +9 | `col_x0/y0` - `col_x1/y1`, in order | `col_bits`: a bit a body whose box meets it; C=1 if any. A zone is a box asked about |
+| `col_tile` | +12 | `col_x0/y0` | A = the properties of the metatile there (one byte of DMA, none if it is the last one asked) |
+| `col_near` | +15 | X = body, A = reach | Y = the nearest other body within reach, C=1 |
+| `shot_fire` | +18 | `col_x0/y0`, A = heading, Y = speed, X = the firer | C=1 if a shot was free (eight at once) |
+| `shot_step` | +21 | | every shot one frame |
+
+A traced path steps 4 pixels at a time along its longer axis, less than the smallest body (6), and tests only the bodies whose boxes meet the path's box, so a long trace across an empty street costs little and nothing can be stepped over. A shot is traced from where it was to where it is going each frame: a wall stops it; a body it meets takes 16 damage and a quarter of the shot's speed as a push, and is knocked down if on foot. The last stop is left for the game to draw (`fx_x/y`, `fx_t`). `make check` fires shots in the demo's tape and requires that no shot is ever inside a wall and that every stopping point is clear of one (`collision.shots`).
 
 ## 5. Classes
 

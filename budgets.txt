@@ -83,7 +83,9 @@ traffic.frames_lost           150   #    22   the demo's own measure: see above
 # The physics module (modules/physics, docs/PHYSICS.md, 2026-09-18) in
 # examples/physics after its tape: the player on foot, four walkers, four
 # parked vehicles asleep.  The step's cycles include the interrupts that land
-# in it.  Frames without a callback in 690.
-physics.step_median          4800   #  4521   phys_step, 9 bodies, 5 awake
-physics.step_worst           6900   #  6551
-physics.frames_lost            80   #    51   of 690: the next cost pass is due
+# in it.  Frames without a callback in 760.  Measured after 690 frames at
+# first (4,521, 6,551, 51); the tape now ends with shooting and runs to 760,
+# with more bodies awake when it is measured: the same code, a busier scene.
+physics.step_median          5500   #  5219   phys_step, 9 bodies
+physics.step_worst           7900   #  7505
+physics.frames_lost            95   #    78   of 760: the next cost pass is due

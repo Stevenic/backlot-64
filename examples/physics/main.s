@@ -18,6 +18,7 @@
 .include "slots.inc"
 .include "../../modules/physics/physics.inc"
 .include "physics_syms.inc"
+.include "collision_syms.inc"
 
 .export game_main
 
@@ -61,6 +62,11 @@ game_main:
         B64_SET16 b64_ptr, PHYS_BASE
         B64_SET16 b64_len, PHYS_SIZE
         jsr b64_fetch
+        B64_SET24 b64_reu, SLOT_COLLISION      ; and the collision module in region A
+        B64_SET16 b64_ptr, $8000
+        B64_SET16 b64_len, $0800
+        jsr b64_fetch
+        jsr col_init
         jsr phys_init
         lda #<SLOT_WORLD
         sta phys_world
@@ -148,6 +154,7 @@ frame:
         jsr control
         jsr walkers
         jsr phys_step
+        jsr shot_step
         jsr follow
         jsr submit
         lda tick
@@ -193,11 +200,13 @@ control:
         ldx player
         lda driving
         bne @car
-        lda tapped              ; on foot: a tap beside a car gets in
+        lda tapped              ; on foot: a tap beside a car gets in, elsewhere fires
         beq @walk
         jsr get_in
-        bcc @walk
+        bcc :+
         rts
+:       jsr fire
+        ldx player
 @walk:  lda joy
         sta pb_in,x
         rts
@@ -219,28 +228,15 @@ control:
         sta pb_in,x
         rts
 
-; get_in: the first car within 22 pixels of the player; C=1 if in
+; get_in: the nearest body within 22 pixels (the collision module's
+; col_near), if it is a car; C=1 if in
 get_in:
-        ldy #PHYS_NB-1
-@c:     lda pb_mov,y
+        lda #22
+        jsr col_near
+        bcc @no
+        lda pb_mov,y
         cmp #M_WHEELS
-        bne @n
-        lda pb_xl,y
-        sec
-        sbc pb_xl,x
-        sta camdx
-        lda pb_xh,y
-        sbc pb_xh,x
-        jsr near
-        bcc @n
-        lda pb_yl,y
-        sec
-        sbc pb_yl,x
-        sta camdx
-        lda pb_yh,y
-        sbc pb_yh,x
-        jsr near
-        bcc @n
+        bne @no
         sty camdx+1             ; in: the walker goes, the car is the player's
         jsr phys_remove
         ldx camdx+1
@@ -253,27 +249,24 @@ get_in:
         sta VIC_SPR0_COLOR
         sec
         rts
-@n:     dey
-        bpl @c
+@no:    ldx player
         clc
         rts
-; near: camdx = low byte, A = high byte of a difference; C=1 if within 22
-near:
-        beq @pos
-        cmp #$FF
-        bne @far
-        lda camdx
-        cmp #<-22
-        bcc @far
-        sec
-        rts
-@pos:   lda camdx
-        cmp #22
-        bcs @far
-        sec
-        rts
-@far:   clc
-        rts
+
+; fire: a shot from the player, the way it faces, 6 pixels a frame
+fire:
+        ldx player
+        lda pb_xl,x
+        sta col_x0
+        lda pb_xh,x
+        sta col_x0+1
+        lda pb_yl,x
+        sta col_y0
+        lda pb_yh,x
+        sta col_y0+1
+        lda pb_ang,x
+        ldy #6
+        jmp shot_fire
 
 ; get_out: a walker beside the car (18 pixels south of it); the car coasts
 get_out:
@@ -433,7 +426,92 @@ submit:
         ldx sb_x
 @n:     dex
         bpl @b
+        jsr submit_shots
         jmp b64_spr_end
+
+; submit_shots: each shot in flight, and the last hit while it shows
+submit_shots:
+        ldx #NS-1
+@s:     lda sh_on,x
+        beq @n
+        lda sh_xl,x
+        sta shx
+        lda sh_xh,x
+        sta shx+1
+        lda sh_yl,x
+        sta shy
+        lda sh_yh,x
+        sta shy+1
+        txa
+        clc
+        adc #13                 ; slots 13-20
+        sta b64_spr_slot
+        lda #1
+        stx sb_x
+        jsr submit_dot
+        ldx sb_x
+@n:     dex
+        bpl @s
+        lda fx_t
+        beq @done
+        lda fx_x
+        sta shx
+        lda fx_x+1
+        sta shx+1
+        lda fx_y
+        sta shy
+        lda fx_y+1
+        sta shy+1
+        lda #21
+        sta b64_spr_slot
+        lda #7
+        jmp submit_dot
+@done:  rts
+
+; submit_dot: shx/shy (world), A = colour, b64_spr_slot -> the lamp frame there
+submit_dot:
+        sta b64_spr_colour
+        lda shx
+        sec
+        sbc b64_cam_x
+        sta camdx
+        lda shx+1
+        sbc b64_cam_x+1
+        sta camdx+1
+        lda camdx
+        clc
+        adc #12
+        sta b64_spr_x
+        lda camdx+1
+        adc #0
+        sta b64_spr_x+1
+        beq :+
+        cmp #1
+        bne @off
+        lda b64_spr_x
+        cmp #<344
+        bcs @off
+:       lda shy
+        sec
+        sbc b64_cam_y
+        tay
+        lda shy+1
+        sbc b64_cam_y+1
+        bne @off
+        tya
+        clc
+        adc #40
+        bcs @off
+        cmp #30
+        bcc @off
+        cmp #250
+        bcs @off
+        sta b64_spr_y
+        B64_SET24 b64_reu, SLOT_LAMP
+        lda #0
+        sta b64_spr_flags
+        jmp b64_spr_add
+@off:   rts
 
 ; submit_body: X = body, onto the multiplexer if it is on screen
 submit_body:
@@ -642,10 +720,13 @@ tenths:    .byte "0112334456678899"
 ; ---------------------------------------------------------------------------
 ; the tape (AUTODRIVE): frames, then the stick
 .ifdef AUTODRIVE
-tape_len:  .byte 40, 6, 1, 1, 100, 30, 50, 25, 40, 60, 40, 1, 1, 60, 0
+tape_len:  .byte 40, 6, 1, 1, 100, 30, 50, 25, 40, 60, 40, 1, 1, 60, 1, 30, 1, 30, 4, 1, 30, 0
 tape_joy:  .byte 0, IN_UP, IN_UP | IN_FIRE, 0, IN_UP, 0, IN_DOWN, IN_UP | IN_LEFT, IN_UP | IN_RIGHT | IN_FIRE, IN_DOWN, 0, IN_FIRE, 0, IN_RIGHT
+           .byte IN_RIGHT | IN_FIRE, 0, IN_FIRE, 0, IN_UP, IN_UP | IN_FIRE, 0
 .endif
 
 .segment "GAMETOP"
+shx:    .res 2
+shy:    .res 2
 tapped: .res 1
 sb_x:   .res 1
