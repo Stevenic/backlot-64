@@ -30,10 +30,10 @@
 .include "wheels.s"
 
 ; the movers this module carries, by mover number (the address less one)
-mover_tab:  .word hold-1, foot-1, wheels-1, hold-1, hold-1, hold-1        ; boats hold still on land
+mover_tab:  .word hold-1, foot-1, wheels-1, hold-1, hold-1, hold-1, hold-1        ; boats and aircraft hold still
 ; what each mover counts as a wall: (properties & and) ^ eor, non-zero
-wall_and:   .byte 0, WALL, WALL, P_WATER, 0, WALL
-wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0
+wall_and:   .byte 0, WALL, WALL, P_WATER, 0, WALL, WALL
+wall_eor:   .byte 0, 0, 0, P_WATER, 0, 0, 0
 
 .include "tables.s"
 .include "private.s"

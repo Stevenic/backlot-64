@@ -98,3 +98,11 @@ sky.frames_lost                 6   #     2   of 700, the two module swaps inclu
 hover.step_median            1950   #  1824   phys_step, a hovering helicopter, a car and the player, over 600 steps
 hover.step_worst             2750   #  2605
 hover.frames_lost               2   #     0   of 600
+plane.step_median            3350   #  3163   phys_step with a plane, over 880 steps, either module in
+plane.step_worst             8350   #  7924
+plane.frames_lost               6   #     2   of 880, the two module swaps included
+debris.step_median           8350   #  7940   phys_step, the city's bodies, over 560 steps
+debris.step_worst           15750   # 14993
+debris.col_median             260   #   238   shot_step: shots, grenades and debris, over 560 steps
+debris.col_worst             7450   #  7095   a blast: bodies pushed and six pieces thrown
+debris.frames_lost             77   #    73   of 560: a city frame has no time to spare for six more sprites

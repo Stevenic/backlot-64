@@ -94,6 +94,35 @@ DEMOS = [
         "note": "",
     },
     {
+        "key": "plane", "prg": "build/plane-auto.prg", "skip": 20, "frames": 760, "every": 1,
+        "title": "A plane off the main road",
+        "source": "modules/physics", "run": "make run-plane",
+        "text": "A light plane on the road. Getting in swaps the air module in. The throttle opens along the road; "
+                "at flying speed it climbs to 75 pixels, over the six-storey blocks, and flies a full circle that "
+                "brings it back onto the road's line; throttled back below flying speed it sinks onto the road, "
+                "brakes, and the pilot steps out onto the pavement.",
+        "facts": ["over buildings in the air for 66 frames, through all 16 headings",
+                  "down on the road and stopped", "no body ever inside a building taller than it",
+                  "2 frames lost in 880, the swaps included"],
+        "check": "plane.flight, plane.down, plane.walls, plane.swap",
+        "note": "",
+    },
+    {
+        "key": "debris", "prg": "build/debris-auto.prg", "skip": 20, "frames": 540, "every": 1,
+        "title": "Debris",
+        "source": "modules/collision", "run": "make run-debris",
+        "text": "The sedan is driven into the parked cars, and the crash throws out pieces; a grenade tossed at the "
+                "wrecks throws out six more. Debris ignores everything but the ground: it flies out, bounces at half "
+                "its speed, and when a bounce is too weak to matter it settles, lies a moment and goes, so each "
+                "piece is a sprite only while it is doing something.",
+        "facts": ["a burst from the crash, one from the blast", "no piece ever below the ground",
+                  "every piece settled on the ground before it goes",
+                  "six pieces in the air cost about half the frames of a full city scene"],
+        "check": "debris.thrown, debris.ground",
+        "note": "Every piece is a sprite, and this scene's frame has no time to spare: it loses 73 frames in 560 while "
+                "debris flies. A game asks for debris where it has the time.",
+    },
+    {
         "key": "hover", "prg": "build/hover-auto.prg", "skip": 20, "frames": 480, "every": 1,
         "title": "Shots, blasts and height",
         "source": "modules/collision", "run": "make run-hover",

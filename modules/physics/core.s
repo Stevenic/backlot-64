@@ -1319,9 +1319,9 @@ shove:
 
 ; the classes every module shares, so a body keeps its box and mass through a
 ; swap: 0 a walker; 1 sedan, 2 sports car, 3 truck, 4 bike (wheels); 5
-; speedboat, 6 launch, 7 jet ski (hull); 8 helicopter (air)
-;                  walk  sedan  sport  truck   bike  speed launch    ski   heli
-c_hw:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8
-c_hh:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8
-c_mass:   .byte       1,     8,     6,    15,     3,     5,    12,     2,     6
+; speedboat, 6 launch, 7 jet ski (hull); 8 helicopter, 9 plane (air)
+;                  walk  sedan  sport  truck   bike  speed launch    ski   heli  plane
+c_hw:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8,     8
+c_hh:     .byte       3,     7,     7,     9,     4,     7,     9,     4,     8,     8
+c_mass:   .byte       1,     8,     6,    15,     3,     5,    12,     2,     6,     5
 kofs:     .byte 0*NB, 1*NB, 2*NB, 3*NB, 4*NB, 5*NB, 6*NB, 7*NB, 8*NB

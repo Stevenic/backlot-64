@@ -28,6 +28,8 @@ slot    BOATS16   $567000  build/boats16.spr   ; a speedboat at 16 headings (too
 slot    AIR       $568000  build/air.bin       ; the air physics module, swapped with PHYSICS at $6000
 slot    HELI16    $56A000  build/heli16.spr    ; a helicopter at 16 headings
 slot    HELISH16  $56A400  build/helish16.spr  ; its shadow, the same outline in one colour
+slot    PLANE16   $56A800  build/plane16.spr   ; a light plane at 16 headings
+slot    PLANESH16 $56AC00  build/planesh16.spr ; its shadow
 slot    HEAP8     $600000  -        ; game heap on an 8 MB REU (see B64_HEAP8)
 slot    SCRATCH   $7F0000  -
 slot    HEAP16    $800000  -        ; game heap on a 16 MB REU: only when b64_plat has REU16

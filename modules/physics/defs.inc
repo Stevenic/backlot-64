@@ -17,6 +17,7 @@ M_FOOT  = 1
 M_WHEELS = 2
 C_HULL0 = 5                     ; the first hull class (the hull mover's tables start there)
 C_HELI  = 8
+C_PLANE = 9
 
 ST_SKID  = $01                  ; sliding: more sideways speed than grip can take
 ST_DOWN  = $02                  ; on foot, knocked down
@@ -49,10 +50,11 @@ cur     = $8F                   ; the body being worked on
 
 ; the body tables, at fixed addresses that every physics module and the
 ; collision module share, so a module swap keeps every body where it was
-PB_BASE = $7800
+PB_BASE = $7A00
 M_HULL   = 3                    ; boats (the water module)
 M_AIR    = 4                    ; aircraft (the air module)
 M_THROWN = 5
+M_PLANE  = 6                    ; aircraft with wings (the air module)
 .enum
         k_mov
         k_cls
@@ -129,6 +131,7 @@ phys_tiles = phys_world + 3             ; the tileset's REU address: the air mod
 PB_END  = phys_tiles + 3
 .assert PB_END <= $7C00, error, "the body tables outgrow their place"
 ; the tables every physics module carries at the same addresses (pinned.cfg's
-; PTAB at $7000): other modules may read them
-PHYS_SINE  = $7400
-PHYS_SHARE = $7500
+; PTAB at $7200, after the two pages of each of f_lo and f_hi): other modules
+; may read them
+PHYS_SINE  = $7600
+PHYS_SHARE = $7700

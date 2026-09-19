@@ -23,6 +23,15 @@
 ; the same calls work whichever is in.  A boat steers like a car without
 ; grip; down is reverse thrust.
 ;
+; Assembled with -D DEBRIS=1 (make run-debris) it plays a tape of crashes
+; and a blast; each throws out debris, which ignores everything but the
+; ground.  Only this scene asks for debris: every piece is a sprite, and the
+; city scene has no frame time to spare for one.
+;
+; Assembled with -D PLANE=1 (make run-plane) it has a light plane on the
+; road: up is the throttle, fire climbs at flying speed, down throttles back
+; in the air and brakes on the ground.
+;
 ; Assembled with -D HOVER=1 (make run-hover) it starts in the air module,
 ; a helicopter holding 32 pixels up across the road: shots and a grenade
 ; pass beneath it until it settles.
@@ -49,6 +58,10 @@ PCY     = 92
 START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000,
 START_Y = 1001 * 32 + 16        ; a six-storey block south of it (rows 1002-1005)
 ROAD_Y  = 1000 * 32 + 16
+.elseif .defined(PLANE)
+START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000,
+START_Y = 1001 * 32 + 16        ; which runs east long enough to take off from
+ROAD_Y  = 1000 * 32 + 16
 .elseif .defined(HOVER)
 START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000;
 START_Y = 1001 * 32 + 16        ; the helicopter lifts off the pavement across it
@@ -74,6 +87,7 @@ joywas:  .res 1
 tick:    .res 2
 ped_t:   .res PHYS_NB           ; per pedestrian: frames until it picks a new way
 ped_in:  .res PHYS_NB
+crash_t: .res 1                 ; the player's car's impact at the last step (DEBRIS)
 colour:  .res PHYS_NB
 tape_i:  .res 1                 ; AUTODRIVE: the tape's position and frames left
 tape_n:  .res 1
@@ -104,6 +118,10 @@ game_main:
         B64_SET16 b64_len, $1000
         jsr b64_fetch
         jsr col_init
+.ifdef DEBRIS
+        lda #6                  ; a blast throws out six pieces
+        sta db_blast
+.endif
         jsr PHYS_INIT
         lda #<SLOT_WORLD
         sta phys_world
@@ -127,6 +145,7 @@ game_main:
         sta tick
         sta tick+1
         sta driving
+        sta crash_t
         sta module
         sta joywas
         sta tape_i
@@ -195,6 +214,17 @@ start_yl:  .byte <START_Y, <ROAD_Y, <(ROAD_Y + 8), <START_Y, <START_Y
 start_yh:  .byte >START_Y, >ROAD_Y, >(ROAD_Y + 8), >START_Y, >START_Y
 start_ang: .byte 0, 0, 0, 0, 0
 start_col: .byte 13, 14, 2, 4, 3
+.elseif .defined(PLANE)
+; the starting bodies: the player on the pavement, a plane on the road facing
+; east, two walkers
+start_mov: .byte M_FOOT, M_PLANE, M_FOOT, M_FOOT, 0
+start_cls: .byte C_WALKER, C_PLANE, C_WALKER, C_WALKER
+start_xl:  .byte <START_X, <(START_X + 40), <(START_X - 60), <(START_X - 90)
+start_xh:  .byte >START_X, >(START_X + 40), >(START_X - 60), >(START_X - 90)
+start_yl:  .byte <START_Y, <ROAD_Y, <START_Y, <START_Y
+start_yh:  .byte >START_Y, >ROAD_Y, >START_Y, >START_Y
+start_ang: .byte 0, 0, 0, 0
+start_col: .byte 13, 7, 4, 3
 .elseif .defined(HOVER)
 ; the starting bodies: the player, a helicopter across the road, which holds
 ; 32 pixels up and then settles, and a car parked along the road
@@ -241,7 +271,12 @@ frame:
         jsr pilots
 .endif
         jsr PHYS_STEP
+after_step:
+.ifdef DEBRIS
+        jsr crashes
+.endif
         jsr shot_step
+after_shots:
         jsr follow
         jsr submit
         lda tick                ; the status row: made on one frame, shown on
@@ -304,8 +339,10 @@ control:
         beq @drive
         lda pb_mov,x            ; (in an aircraft fire is the climb: a tap with
         cmp #M_AIR              ; the stick pulled down gets out)
+        beq @air
+        cmp #M_PLANE
         bne :+
-        lda joy
+@air:   lda joy
         and #IN_DOWN
         beq @drive
 :
@@ -338,6 +375,8 @@ get_in:
         cmp #M_HULL
         beq :+
         cmp #M_AIR
+        beq :+
+        cmp #M_PLANE
         bne @no
 :       sty camdx+1             ; in: the walker goes, the vehicle is the player's
         jsr PHYS_REMOVE
@@ -349,17 +388,16 @@ get_in:
         sta driving
         lda colour,x
         sta VIC_SPR0_COLOR
-        lda pb_mov,x            ; a boat brings the water module, an aircraft the air
-        cmp #M_HULL
-        bcc :+
-        sbc #M_HULL - 1         ; 1 water, 2 air
+        ldy pb_mov,x            ; a boat brings the water module, an aircraft the air
+        lda mod_of,y
         jsr use_module
-:       ldx player
+        ldx player
         sec
         rts
 @no:    ldx player
         clc
         rts
+mod_of: .byte 0, 0, 0, 1, 2, 0, 2       ; the module a mover needs: none, foot, wheels, hull, heli, thrown, plane
 
 ; use_module: A = 0 ground, 1 water, 2 air -> that physics module at $6000,
 ; unless it is there already.  The body tables above it stay as they are;
@@ -669,6 +707,7 @@ submit:
 @n:     dex
         bpl @b
         jsr submit_shots
+        jsr submit_debris
         jmp b64_spr_end
 
 ; submit_shots: each shot in flight, and the last hit while it shows
@@ -784,6 +823,77 @@ submit_shots:
         bpl @t
         rts
 
+; submit_debris: each piece of debris, raised by half its height, in two
+; greys; all in one slot (one frame)
+submit_debris:
+        lda db_live             ; none: nothing to draw
+        bne :+
+        rts
+:       ldx #ND-1
+@d:     lda db_t,x
+        beq @n
+        stx sb_x
+        lda db_xl,x
+        sta shx
+        lda db_xh,x
+        sta shx+1
+        lda db_zh,x
+        lsr a
+        sta sb_z
+        lda db_yl,x
+        sec
+        sbc sb_z
+        sta shy
+        lda db_yh,x
+        sbc #0
+        sta shy+1
+        lda #42
+        sta b64_spr_slot
+        txa
+        and #1
+        clc
+        adc #11                 ; dark grey, grey
+        jsr submit_dot
+        ldx sb_x
+@n:     dex
+        bpl @d
+        rts
+
+.ifdef DEBRIS
+; crashes: the player's car hit hard this step (an impact of 16: a pixel a
+; frame of change, in 16ths; the tape's rams measure 16 to 22), when the
+; step before was not, throws out three pieces of debris: once a crash,
+; however long it goes on pushing.  After the physics step and before the
+; collision step, so a blast's mark is not one.  (Every crash in the tape
+; is the player's; a game would look at every car, at a cost every frame.)
+crashes:
+        ldx player
+        lda pb_mov,x
+        cmp #M_WHEELS
+        bne @no
+        lda pb_hit,x
+        ldy crash_t             ; the last step's
+        sta crash_t
+        cmp #16
+        bcc @done
+        cpy #16
+        bcs @done
+        lda pb_xl,x
+        sta col_x0
+        lda pb_xh,x
+        sta col_x0+1
+        lda pb_yl,x
+        sta col_y0
+        lda pb_yh,x
+        sta col_y0+1
+        lda #3
+        ldy #1
+        jmp debris_burst
+@no:    lda #0
+        sta crash_t
+@done:  rts
+.endif
+
 ; ring_off: A/Y = a coordinate -> A/Y = it plus ring_r, or minus it when C=1
 ring_off:
         bcs @sub
@@ -840,6 +950,8 @@ submit_dot:
         sta b64_spr_flags
         jmp b64_spr_add
 @off:   rts
+
+shadow_base: .faraddr SLOT_HELISH16, SLOT_PLANESH16
 
 ; submit_frame: shx/shy (world), A = colour, sh_frame = a multicolour frame,
 ; b64_spr_slot -> that frame there
@@ -963,11 +1075,16 @@ sb_out: rts
 ; submit_shadow: X = body.  An aircraft in the air: its outline in black
 ; where it would stand (roofs are drawn at ground level, so over a roof too)
 submit_shadow:
+        lda pb_agl,x            ; on the ground (every body but an aircraft): none
+        beq sb_out
+        ldy #0
         lda pb_mov,x
         cmp #M_AIR
+        beq :+
+        ldy #3
+        cmp #M_PLANE
         bne sb_out
-        lda pb_agl,x
-        beq sb_out
+:       sty veh_k
         lda pb_xl,x
         sta shx
         lda pb_xh,x
@@ -990,14 +1107,15 @@ submit_shadow:
         lsr
         ror b64_reu+1
         sta b64_reu+2
+        ldy veh_k
         lda b64_reu+1
         clc
-        adc #<SLOT_HELISH16
+        adc shadow_base,y
         sta sh_frame
         lda b64_reu+2
-        adc #>SLOT_HELISH16
+        adc shadow_base+1,y
         sta sh_frame+1
-        lda #^SLOT_HELISH16
+        lda shadow_base+2,y
         adc #0
         sta sh_frame+2
         txa                     ; slots 30-41, one a body
@@ -1011,6 +1129,8 @@ submit_shadow:
 ; of 16 headings, a walker in one of two steps
 frame_of:
         lda pb_mov,x
+        cmp #M_FOOT             ; the commonest first
+        beq @foot
         ldy #0
         cmp #M_WHEELS
         beq @veh
@@ -1019,6 +1139,9 @@ frame_of:
         beq @veh
         ldy #6
         cmp #M_AIR
+        beq @veh
+        ldy #9
+        cmp #M_PLANE
         bne @foot
 @veh:   sty veh_k
         lda pb_ang,x
@@ -1062,7 +1185,7 @@ frame_of:
         adc #0
         sta b64_reu+2
         rts
-veh_base: .faraddr SLOT_CARS16, SLOT_BOATS16, SLOT_HELI16
+veh_base: .faraddr SLOT_CARS16, SLOT_BOATS16, SLOT_HELI16, SLOT_PLANE16
 
 ; ---------------------------------------------------------------------------
 ; hud_update: what the player is doing, into hudbuf
@@ -1119,22 +1242,24 @@ hud_update:
         tay
         lda tenths,y
         sta hudbuf+16
-        lda pb_mov,x            ; an aircraft: its height instead, in pixels
+        lda pb_mov,x            ; an aircraft: its height too, in pixels
         cmp #M_AIR
+        beq :+
+        cmp #M_PLANE
         bne @dmg
-        lda pb_zh,x
+:       lda pb_zh,x
         jsr put_dec3
-        ldy #8
+        ldy #3
 :       lda txt_alt,y
-        sta hudbuf+11,y
+        sta hudbuf+33,y
         dey
         bpl :-
         lda hudbuf+29
-        sta hudbuf+15
+        sta hudbuf+37
         lda hudbuf+30
-        sta hudbuf+16
+        sta hudbuf+38
         lda hudbuf+31
-        sta hudbuf+17
+        sta hudbuf+39
 @dmg:   lda pb_dmg,x
         jsr put_dec3
         lda pb_st,x
@@ -1186,17 +1311,25 @@ put_dec3:
 hud_tpl:   .byte "              0.0 PX  DAMAGE 000         ", 0
 txt_foot:  .byte "ON FOOT", 0
 txt_skid:  .byte "SKID"
-txt_alt:   .byte "ALT      "
+txt_alt:   .byte "ALT "
 txt_spray: .byte "SPRAY"
 cls_names: .byte "SEDAN", 0, "SPORTS", 0, "TRUCK", 0, "BIKE", 0, "SPEEDBOAT", 0, "LAUNCH", 0, "JET SKI", 0
-           .byte "HELICOPTER", 0
-cls_off:   .byte 0, 0, 6, 13, 19, 24, 34, 41, 49
+           .byte "HELICOPTER", 0, "PLANE", 0
+cls_off:   .byte 0, 0, 6, 13, 19, 24, 34, 41, 49, 60
 tenths:    .byte "0112334456678899"
 
 ; ---------------------------------------------------------------------------
 ; the tape (AUTODRIVE): frames, then the stick
 .ifdef AUTODRIVE
-.ifdef HOVER
+.ifdef PLANE
+; walk to the plane and get in (the air module comes in); the throttle along
+; the road; at flying speed, climb over the blocks and turn a full circle;
+; back on the road's line, throttle back and sink onto it; brake; get out
+; (the ground module comes back) and walk
+tape_len:  .byte 40, 30, 1, 1, 110, 100, 30, 128, 30, 140, 110, 1, 1, 40, 60, 0
+tape_joy:  .byte 0, IN_UP | IN_RIGHT, IN_FIRE, 0, IN_UP, IN_UP | IN_FIRE, IN_UP, IN_UP | IN_RIGHT, IN_UP, IN_DOWN
+           .byte IN_DOWN, IN_DOWN | IN_FIRE, 0, IN_LEFT, 0
+.elseif .defined(HOVER)
 ; wait for the helicopter to lift; face north, three shots at it, which pass
 ; beneath; a grenade under it, whose blast does not reach it; wait for it to
 ; settle on the pavement; three shots, which hit it
@@ -1211,6 +1344,13 @@ tape_joy:  .byte 0, IN_UP, 0, IN_UP | IN_FIRE, 0, IN_UP | IN_FIRE, 0, IN_UP | IN
 tape_len:  .byte 40, 30, 1, 1, 70, 20, 20, 12, 110, 30, 40, 14, 170, 1, 1, 40, 60, 0
 tape_joy:  .byte 0, IN_UP | IN_RIGHT, IN_FIRE, 0, IN_FIRE, IN_DOWN | IN_FIRE, IN_DOWN, IN_UP, 0, IN_FIRE
            .byte IN_UP, IN_DOWN, 0, IN_DOWN | IN_FIRE, 0, IN_LEFT, 0
+.elseif .defined(DEBRIS)
+; the city's start: get into the sedan and drive into the parked cars, each
+; crash throwing out debris; back off and get out; walk west, out of reach of
+; the cars (a tap beside one gets in), turn east and toss a grenade at the
+; wrecks, whose blast throws out more
+tape_len:  .byte 40, 6, 1, 1, 100, 30, 40, 50, 1, 1, 25, 2, 5, 1, 150, 0
+tape_joy:  .byte 0, IN_UP, IN_UP | IN_FIRE, 0, IN_UP, 0, IN_DOWN, 0, IN_FIRE, 0, IN_LEFT, IN_RIGHT, 0, IN_FIRE, 0
 .elseif .defined(COAST)
 ; walk east to the water's edge and get into the speedboat (the water module
 ; comes in); out to sea and into the launch; turn away on the propeller's

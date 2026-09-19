@@ -12,8 +12,8 @@
 ;   phys_push             X = body, phys_x/y = a velocity change (8.8)
 
 PHYS_BASE       = $6000
-PHYS_SIZE       = $1800                 ; what a physics module loads: $6000-$77FF; the
-                                        ; body tables above it ($7800) survive a swap
+PHYS_SIZE       = $1A00                 ; what a physics module loads: $6000-$79FF; the
+                                        ; body tables above it ($7A00) survive a swap
 
 PHYS_NB         = 12                    ; bodies
 
@@ -30,6 +30,7 @@ M_FOOT          = 1                     ; movers
 M_WHEELS        = 2
 M_HULL          = 3
 M_AIR           = 4
+M_PLANE         = 6
 
 C_WALKER        = 0                     ; classes (docs/PHYSICS.md section 4)
 C_SEDAN         = 1
@@ -40,6 +41,7 @@ C_SPEEDBOAT     = 5
 C_LAUNCH        = 6
 C_JETSKI        = 7
 C_HELI          = 8
+C_PLANE         = 9
 
 ST_SKID         = $01                   ; pb_st bits
 ST_DOWN         = $02

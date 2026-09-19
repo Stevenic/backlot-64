@@ -230,6 +230,27 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 
 **How it is checked.** `hover.beneath`: never hit while 8 pixels or more up, though shots cross its footprint (9 frames). `hover.blast`: a blast in reach at 16 pixels up does not mark it. `hover.down`: hit three times on the ground.
 
+### 18 September, late night: planes
+
+**What was built.** A second air mover, the plane, in the air module. It goes where it points, in the vehicle's own frame with no sideways speed. Up is the throttle; at flying speed fire climbs and letting go holds its height; slower than that it sinks, which is how it lands. The helicopter's handling of height (the ceiling, the floor under the box, landing, the height above ground) became one routine, `rise`, which both aircraft use. The fifth build of the example puts a plane on the road. It takes off, circles over the blocks and lands back on the road.
+
+**What went wrong on the way.**
+- The first flight climbed for 50 frames, turned over a six-storey block at 37 pixels, and flew into it: 120 damage, and speed from 896 to 40. The walls worked. The tape now climbs longer.
+- The air module's code outgrew the 4 KB before the shared tables. The limit set in `pinned.cfg` for this reason caught it at link time. Every module's tables moved up 512 bytes: code to $71FF, tables at $7200, the body tables at $7A00. They now end 9 bytes short of $7C00.
+- The get-out tap came while the plane was still rolling, so it was refused, and the walk that followed on the tape steered the plane. The tape brakes longer.
+- The city scene's frames lost rose to 44 again from the example's new drawing cases. Testing a body's height above the ground before its mover, and walkers first, brought it back to 39.
+
+### 18 September, night: debris
+
+**What was built.** Debris in the collision module, beside the grenades: up to 12 pieces with a height. They are thrown out in a spread, bounce at half their speed, and settle when a bounce is too weak to matter. Then they lie 6 frames and go. Nothing but the ground touches them. A game throws a burst with `debris_burst`; a blast throws as many as the game sets, none by default. The sixth build of the example drives into parked cars and throws a grenade at the wrecks.
+
+**What the measurements changed.**
+- The first crash threshold, an impact of 24, was a guess. The tape's rams measure 16 to 22, so there was no debris at all. It is now 16.
+- The city scene went from 39 frames lost to 142. Most of it came before any piece existed: empty loops over twelve pieces and twelve bodies, about 500 cycles a frame, in a frame with nothing to spare. The collision module now counts live pieces and skips everything at none. Debris is something a game asks for: only the debris scene does, and the city is back to 40.
+- A car pushing a wreck crossed the threshold frame after frame and threw a new burst each time. A crash now throws once, on the frame its impact first crosses the line.
+- Pieces never settled. After storing the halved bounce speed, the code branched on the Z flag, but a store sets no flags, so the branch tested the byte shifted just before. Every piece lived its full 48 ticks, about 100 frames at the rate the scene was running. The value is tested now (the rule in `CLAUDE.md` about testing values, not left-over flags, applies to stores too). Frames lost in the debris scene went from 100 to 73 of 560.
+- What remains is the real price. Six pieces in the air in a full city frame cost about half the frames while they fly. It is budgeted and stated, not hidden.
+
 ---
 
 ## What went wrong, and what caught it
@@ -277,6 +298,9 @@ For the cutscene's nine sprites the saving is a transfer, not a gain: the main-l
 | A walker started inside a palm tree | The coast's walls check, every frame | Moved; the check judges from the map, not the module |
 | Taking off in the helicopter got the player out | A trace of the sky tape | In an aircraft, getting out is fire with the stick down |
 | A landed helicopter was drawn above its own shadow | A screenshot on the roof | The mover publishes the height above what is under the craft |
+| The plane flew into a six-storey block | Its damage and speed in a trace | The tape climbs longer before turning |
+| Debris never settled | A piece watched tick by tick | A branch tested flags a store never set; the value is tested |
+| Empty debris loops cost the city 100 frames | Frames lost counted every 10 frames | Live pieces are counted; debris is asked for, not always on |
 
 ---
 

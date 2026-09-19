@@ -50,6 +50,10 @@ A change is not done until `make check` passes. A change that moves a number in 
 
 **Hover.** Built with a hovering helicopter (`build/hover-auto.prg`), in the air module from the start: while the helicopter is 8 pixels or more up it is never hit, though shots cross its footprint (`hover.beneath`); a blast within reach while it is 16 or more up does not mark it (`hover.blast`); on the ground the same shots hit it (`hover.down`); no body in its walls, two runs alike (`hover.walls`, `hover.repeat`).
 
+**Debris.** Built with a tape of crashes and a blast (`build/debris-auto.prg`): a burst of debris from a crash and one from a blast (`debris.thrown`); no piece ever below the ground, and every piece on the ground as it goes (`debris.ground`); no body in its walls, two runs alike (`debris.walls`, `debris.repeat`). `debris.col_*` times the collision step (`shot_step` to the example's `after_shots`); the physics lines of every scene now time `phys_step` to its own return (`after_step`).
+
+**Plane.** Built with a plane on the road (`build/plane-auto.prg`): take off along the road, climb over the blocks, fly a full circle, sink back onto the road and stop. No body in its walls, the plane's being buildings taller than it (`plane.walls`); the swaps (`plane.swap`); over buildings in the air and through all 16 headings (`plane.flight`); down on the road and asleep (`plane.down`); the player on land with the ground module in (`plane.landed`); two runs alike (`plane.repeat`).
+
 **Sky.** Built with a helicopter (`build/sky-auto.prg`), the tape gets in, which swaps the air module in; flies over a six-storey block and settles onto its roof; flies back and settles onto the road; gets out, which swaps the ground module back. No body's box ever has a corner in what its mover counts as a wall, the helicopter's walls being buildings standing higher than it, from the tileset's heights (`sky.walls`); the swaps as for the boats (`sky.swap`); the helicopter is over the building in the air, rests on its roof at the roof's height, and never passes the ceiling (`sky.flight`); the player ends on foot, on land, with the ground module in (`sky.landed`); two runs end alike (`sky.repeat`).
 
 **Budgets.** Every line of `budgets.txt` is measured and held to its limit, the larger value of the two tiers counting. A measurement without a line fails too, so nothing is measured and ignored.
@@ -66,7 +70,7 @@ A change is not done until `make check` passes. A change that moves a number in 
 | `bench.mux_*` | the benchmark program: `b64_spr_end` for the harness's 32 sprites, interrupts off |
 | `mux.irq_frame` | the emulator's cycle counter from the interrupt handler's entry to its RTI, summed per frame, median of 20 |
 | `traffic.frames_lost` | frames without a callback in 3,000 of the traffic demo driving itself |
-| `boats.step_*`, `boats.frames_lost`, `sky.*`, `hover.*` | the same as the physics lines, over the coast's and the sky's 700 steps, through the jump table at $6009 so either module is timed |
+| `boats.step_*`, `boats.frames_lost`, `sky.*`, `hover.*`, `plane.*`, `debris.*` | the same as the physics lines, over the coast's and the sky's 700 steps, through the jump table at $6009 so either module is timed |
 | `physics.step_*`, `physics.frames_lost` | `phys_step` from entry to the callback's next routine (`shot_step`), interrupts included, every step of the tape in a third run (the first two are the frame-driven runs `physics.repeat` compares); frames without a callback in 800 |
 
 The profile build (`build/prof/cutscene.prg`) is checked only for linking and filling its block. Its numbers are upper bounds and are not budgeted.

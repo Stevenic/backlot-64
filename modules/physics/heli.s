@@ -49,49 +49,8 @@ heli:
         sta pb_vzl,x
         lda #$FF
         sta pb_vzh,x
-@z:     lda pb_zl,x              ; z += vz, between the ground and the ceiling
-        clc
-        adc pb_vzl,x
-        sta pb_zl,x
-        lda pb_zh,x
-        adc pb_vzh,x
-        sta pb_zh,x
-        bpl :+
-        lda #0                  ; under the ground: on it (the floor below says so)
-        sta pb_zh,x
-        sta pb_zl,x
-:       cmp #CEIL
-        bcc @floor
-        lda #CEIL
-        sta pb_zh,x
-        lda #0
-        sta pb_zl,x
-        sta pb_vzl,x
-        sta pb_vzh,x
-@floor: jsr floor
-        sta t5
-        lda pb_zh,x             ; how high over it, for the game to draw
-        sec
-        sbc t5
-        bcs :+
-        lda #0
-:       sta pb_agl,x
-        lda pb_zh,x
-        cmp t5
-        bcc @land               ; under what is below it: down onto it
-        bne @fly
-        lda pb_vzh,x             ; level with it: climbing away, or resting
-        bmi @land
-        ora pb_vzl,x
-        bne @fly
-        jmp @rest
-@land:  lda t5                  ; down onto it
-        sta pb_zh,x
-        lda #0
-        sta pb_agl,x
-        sta pb_zl,x
-        sta pb_vzl,x
-        sta pb_vzh,x
+@z:     jsr rise
+        bcc @fly
 @rest:  lda pb_vxl,x             ; down: it skids to a stop, a quarter a frame
         sta t0
         lda pb_vxh,x
@@ -176,10 +135,67 @@ heli:
         sta pb_vyl,x
         rts
 
+; rise: X = body, an aircraft.  z += vz, between the ceiling and whatever is
+; under its box (floor), and pb_agl its height above that.  C=1 if it is
+; down on it (then vz = 0).  Shared by the helicopter and the plane.
+rise:
+        lda pb_zl,x
+        clc
+        adc pb_vzl,x
+        sta pb_zl,x
+        lda pb_zh,x
+        adc pb_vzh,x
+        sta pb_zh,x
+        bpl :+
+        lda #0                  ; under the ground: on it (the floor below says so)
+        sta pb_zh,x
+        sta pb_zl,x
+:       cmp #CEIL
+        bcc @floor
+        lda #CEIL
+        sta pb_zh,x
+        lda #0
+        sta pb_zl,x
+        sta pb_vzl,x
+        sta pb_vzh,x
+@floor: jsr floor
+        sta t5
+        lda pb_zh,x             ; how high over it, for the game to draw
+        sec
+        sbc t5
+        bcs :+
+        lda #0
+:       sta pb_agl,x
+        lda pb_zh,x
+        cmp t5
+        bcc @land               ; under what is below it: down onto it
+        bne @fly
+        lda pb_vzh,x             ; level with it: climbing away, or resting
+        bmi @land
+        ora pb_vzl,x
+        bne @fly
+        sec
+        rts
+@land:  lda t5
+        sta pb_zh,x
+        lda #0
+        sta pb_agl,x
+        sta pb_zl,x
+        sta pb_vzl,x
+        sta pb_vzh,x
+        sec
+        rts
+@fly:   clc
+        rts
+
 ; quarter: v = A (high), t0 (low) -> A, t0 = v - v/4, none when it is under
-; 1/32 of a pixel a frame either way.  drag32 the same with v/32.  Keep X.
+; 1/32 of a pixel a frame either way.  drag32 and drag64 the same with v/32
+; and v/64.  Keep X.
 quarter:
         ldy #2
+        bne shed
+drag64:
+        ldy #6
         bne shed
 drag32:
         ldy #5

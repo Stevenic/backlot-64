@@ -448,7 +448,7 @@ def physics(R, port):
                 costs = []
                 for _ in range(800):
                     a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["phys_step"]))[-1])
-                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
+                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("after_step"))[-1])
                     costs.append(c - a)
                 continue
             for f in range(800):
@@ -516,22 +516,23 @@ def physics(R, port):
     R.measure("physics.frames_lost", lost)
 
 
-def module_scene(port, prg, frames, swaps, extra=None):
+def module_scene(port, prg, frames, swaps, extra=None, col=False):
     """Run examples/physics built for a scene that swaps physics modules
     (the coast, the sky), four times: once a frame at a time, reading every
     body each frame; again for the final state; once stopped at each swap
     (the body tables before and after the fetch, and the module in place);
     and once timing every step through the jump table at $6009, so either
-    module is timed.  extra(v, syms), if given, reads more each frame of the
-    first run.  Returns what the judges need."""
+    module is timed; with col, the collision step too (shot_step to the
+    example's after_shots).  extra(v, syms), if given, reads more each
+    frame of the first run.  Returns what the judges need."""
     import re
     syms = {m.group(1): int(m.group(2), 16)
             for f in ("build/physics_syms.inc", "build/collision_syms.inc")
             for m in re.finditer(r"^(\w+)\s*=\s*\$([0-9A-Fa-f]+)", open(f).read(), re.M)}
     bins = [open(f"build/{n}.bin", "rb").read() for n in ("physics", "water", "air")]
-    PB, PB_END = 0x7800, syms["phys_tiles"] + 3
+    PB, PB_END = syms["pb_mov"], syms["phys_tiles"] + 3
     names = ("pb_mov", "pb_cls", "pb_xl", "pb_xh", "pb_yl", "pb_yh", "pb_vtl", "pb_vth", "pb_st", "pb_hit",
-             "pb_zh", "pb_vzl", "pb_vzh")
+             "pb_zh", "pb_vzl", "pb_vzh", "pb_ang")
 
     def bodies(v):
         m = {n: v.mem(syms[n], 12) for n in names}
@@ -539,10 +540,10 @@ def module_scene(port, prg, frames, swaps, extra=None):
                     "x": m["pb_xl"][i] | m["pb_xh"][i] << 8, "y": m["pb_yl"][i] | m["pb_yh"][i] << 8,
                     "vt": int.from_bytes(bytes([m["pb_vtl"][i], m["pb_vth"][i]]), "little", signed=True),
                     "vz": int.from_bytes(bytes([m["pb_vzl"][i], m["pb_vzh"][i]]), "little", signed=True),
-                    "z": m["pb_zh"][i], "st": m["pb_st"][i], "hit": m["pb_hit"][i]}
+                    "z": m["pb_zh"][i], "st": m["pb_st"][i], "hit": m["pb_hit"][i], "ang": m["pb_ang"][i]}
                 for i in range(12) if m["pb_mov"][i]}
 
-    out = {"frames": [], "finals": [], "swaps": [], "costs": [], "lost": 0, "end": None}
+    out = {"frames": [], "finals": [], "swaps": [], "costs": [], "col_costs": [], "lost": 0, "end": None}
     for run in range(4):
         lbl = prg[:-4] + ".lbl"
         v = Vice(prg, *TIERS[8], labels=lbl, port=port)
@@ -561,9 +562,14 @@ def module_scene(port, prg, frames, swaps, extra=None):
             if run == 3:
                 for _ in range(frames):
                     a = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(0x6009))[-1])
-                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
+                    c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("after_step"))[-1])
                     out["costs"].append(c - a)
+                    if col:
+                        c = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to(syms["shot_step"]))[-1])
+                        e = int(re.findall(r"(\d+)\s*\n\(C:", v.run_to("after_shots"))[-1])
+                        out["col_costs"].append(e - c)
                 out["costs"].sort()
+                out["col_costs"].sort()
                 continue
             for f in range(frames):
                 v.frames(1)
@@ -586,7 +592,7 @@ def scene_map():
     world = open("build/world.map", "rb").read()
     ts = open("build/bellamar_day.bin", "rb").read()
     props, heights = ts[0x2800:0x2900], ts[0x2900:0x2A00]
-    HW = [3, 7, 7, 9, 4, 7, 9, 4, 8]
+    HW = [3, 7, 7, 9, 4, 7, 9, 4, 8, 8]
 
     def cells(b):
         h = HW[b["cls"]]
@@ -599,7 +605,7 @@ def scene_map():
             p = props[m]
             if b["mov"] == 3:
                 bad = not p & 0x40
-            elif b["mov"] == 4:
+            elif b["mov"] in (4, 6):
                 bad = p & 0x80 and heights[m] * 8 > b["z"]
             else:
                 bad = p & 0xC0
@@ -741,6 +747,94 @@ def hover(R, port):
     R.measure("hover.frames_lost", d["lost"])
 
 
+def plane(R, port):
+    """The plane, in examples/physics built with one on the road (-D PLANE):
+    get in, which swaps the air module in; the throttle along the road;
+    at flying speed climb over the blocks and fly a full circle; back on the
+    road's line, throttle back and sink onto it; brake, get out, which swaps
+    the ground module back.  No body in its walls, a building standing
+    higher than the plane counting for it; the swaps as for the boats; the
+    plane leaves the road at flying speed, is over a building in the air,
+    turns through every heading in the air, comes down on the road and
+    stops there; the player ends on land with the ground module in; two
+    runs alike; the cost."""
+    in_wall, over_building, props, _, world = scene_map()
+    d = module_scene(port, "build/plane-auto.prg", 880, 2)
+    walls = sum(1 for _, bs, _ in d["frames"] for b in bs.values() if in_wall(b))
+    craft = [next(b for b in bs.values() if b["mov"] == 6) for _, bs, _ in d["frames"]]
+    up = [b for b in craft if b["z"] > 0]
+    crossed = sum(1 for b in up if over_building(b))
+    headings = len({(b["ang"] + 8) >> 4 & 15 for b in up})
+    last_up = max((i for i, b in enumerate(craft) if b["z"] > 0), default=None)
+    end = d["finals"][0]
+    pl = next(b for b in end.values() if b["mov"] == 6)
+    on_road = bool(props[world[((pl["y"] >> 5) << 11) | (pl["x"] >> 5)]] & 0x0F)
+    down = last_up is not None and pl["z"] == 0 and on_road and pl["st"] & 0x80
+    p, mod = d["end"]
+    last = end[p]
+    landed = (last["mov"], mod, in_wall(last)) == (1, 0, False)
+    sw = d["swaps"]
+    R.check("plane.walls", walls == 0, f"880 frames of the tape: {walls} body-frames with a corner in its mover's walls "
+            "(for the plane, a building standing higher than it)")
+    R.check("plane.swap", len(sw) == 2 and all(s[1] and s[2] for s in sw) and [s[0] for s in sw] == [2, 0],
+            f"{len(sw)} swaps: body tables {'unchanged' if all(s[1] for s in sw) else 'CHANGED'} across each; the "
+            f"module in place {'matches' if all(s[2] for s in sw) else 'DOES NOT match'} its binary")
+    R.check("plane.flight", crossed > 0 and headings == 16 and max((b["z"] for b in up), default=0) <= 112,
+            f"in the air {len(up)} frames, over buildings for {crossed}, through {headings} of 16 headings; highest "
+            f"{max((b['z'] for b in up), default=0)}")
+    R.check("plane.down", bool(down), "down on the road and stopped, asleep" if down else
+            f"ends at height {pl['z']}, {'on' if on_road else 'off'} the road, {'asleep' if pl['st'] & 0x80 else 'awake'}")
+    R.check("plane.landed", landed, "the player ends on foot, on land, with the ground module in" if landed
+            else f"the player ends as mover {last['mov']} with module {mod}")
+    R.check("plane.repeat", d["finals"][0] == d["finals"][1], "two runs of the tape end in the same state"
+            if d["finals"][0] == d["finals"][1] else "two runs of the tape end in different states")
+    R.measure("plane.step_median", d["costs"][len(d["costs"]) // 2])
+    R.measure("plane.step_worst", d["costs"][-1])
+    R.measure("plane.frames_lost", d["lost"])
+
+
+def debris(R, port):
+    """Debris, in examples/physics built with a tape of crashes and a blast
+    (-D DEBRIS): drive into the parked cars, back off, get out, toss a
+    grenade at the wrecks.  A car hit hard throws out pieces, and so does a
+    blast; no piece ever goes below the ground, and each lies still on it
+    before it goes.  No body in its walls; two runs alike; the costs of the
+    physics step and of the collision step, debris and all."""
+    in_wall, _, _, _, _ = scene_map()
+
+    def pieces(v, syms):
+        t = v.mem(syms["db_t"], 12)
+        z = v.mem(syms["db_zh"], 12)
+        fx = (v.mem(syms["fx_t"])[0], v.mem(syms["fx_k"])[0])
+        return t, z, fx
+    d = module_scene(port, "build/debris-auto.prg", 560, 0, pieces, col=True)
+    walls = sum(1 for _, bs, _ in d["frames"] for b in bs.values() if in_wall(b))
+    crash_bursts = blast_bursts = under = unsettled = 0
+    prev = [0] * 12
+    for _, bs, (t, z, fx) in d["frames"]:
+        new = sum(1 for k in range(12) if t[k] and not prev[k])
+        if new:
+            if fx[0] == 12 and fx[1] == 2:
+                blast_bursts += 1
+            elif any(b["mov"] == 2 and b["hit"] >= 16 for b in bs.values()):
+                crash_bursts += 1
+        under += sum(1 for k in range(12) if t[k] and z[k] & 0x80)
+        unsettled += sum(1 for k in range(12) if t[k] == 1 and z[k] != 0)
+        prev = t
+    R.check("debris.walls", walls == 0, f"560 frames of the tape: {walls} body-frames with a corner in its mover's walls")
+    R.check("debris.thrown", crash_bursts > 0 and blast_bursts > 0,
+            f"{crash_bursts} bursts from crashes, {blast_bursts} from blasts")
+    R.check("debris.ground", under == 0 and unsettled == 0, f"{under} piece-frames below the ground; {unsettled} pieces "
+            "off the ground as they went")
+    R.check("debris.repeat", d["finals"][0] == d["finals"][1], "two runs of the tape end in the same state"
+            if d["finals"][0] == d["finals"][1] else "two runs of the tape end in different states")
+    R.measure("debris.step_median", d["costs"][len(d["costs"]) // 2])
+    R.measure("debris.step_worst", d["costs"][-1])
+    R.measure("debris.col_median", d["col_costs"][len(d["col_costs"]) // 2])
+    R.measure("debris.col_worst", d["col_costs"][-1])
+    R.measure("debris.frames_lost", d["lost"])
+
+
 def mux_instrument(R, port):
     """The multiplexer's hardware test (tools/b64muxhw.py) on VICE, both test
     builds: frozen snapshots judged entry by entry from the log clock, with
@@ -848,7 +942,7 @@ def main():
                 guarded(f"tier{tier}.{name}", fn, tier, port)
 
     def singles(port):
-        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover)):
+        for name, fn in (("boot", boot_failures), ("scroller", scroller), ("ticks", cutscene_ticks), ("probe", probe_block), ("mux", multiplexer), ("muxhw", mux_instrument), ("traffic", traffic), ("physics", physics), ("boats", boats), ("sky", sky), ("hover", hover), ("plane", plane), ("debris", debris)):
             if want(name):
                 guarded(name, fn, port)
 

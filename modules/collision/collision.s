@@ -18,9 +18,11 @@
 .export sh_on, sh_xl, sh_xh, sh_yl, sh_yh, NS
 .export fx_x, fx_y, fx_t, fx_k
 .export throw_fire, th_on, th_xl, th_xh, th_yl, th_yh, th_zh, NT
+.export debris_burst, db_t, db_xl, db_xh, db_yl, db_yh, db_zh, db_live, db_blast, ND
 
 NS      = 8                     ; shots in flight at once
 NT      = 4                     ; things thrown at once
+ND      = 12                    ; pieces of debris at once
 GRAV    = 12                    ; gravity, 1/256 pixel a frame each frame
 FUSE    = 70                    ; frames before a grenade goes off
 BLAST   = 40                    ; its reach, pixels
@@ -53,6 +55,7 @@ syh     = $9F
         jmp shot_fire           ; +18  col_x0/y0, A = heading, Y = speed, X = owner
         jmp shot_step           ; +21  every shot and every thrown thing one frame
         jmp throw_fire          ; +24  col_x0/y0, A = heading, Y = speed: a grenade
+        jmp debris_burst        ; +27  col_x0/y0, A = pieces, Y = speed: debris
 
 col_init:
         ldx #NS-1
@@ -64,6 +67,12 @@ col_init:
 :       sta th_on,x
         dex
         bpl :-
+        ldx #ND-1
+:       sta db_t,x
+        dex
+        bpl :-
+        sta db_live
+        sta db_blast
         sta fx_t
         sta col_z
         rts
@@ -704,6 +713,7 @@ shot_step:
         beq :+
         dec fx_t
 :       jsr throw_step
+        jsr debris_step
         ldx #NS-1
 @s:     lda sh_on,x
         beq @n
@@ -1144,7 +1154,184 @@ blast:
 @done:  ldx cur_s
         lda #0
         sta th_on,x
+        lda db_blast            ; and it throws out debris, as many pieces as the
+        bne :+                  ; game asks for (none unless it does)
         rts
+:       lda fx_x
+        sta col_x0
+        lda fx_x+1
+        sta col_x0+1
+        lda fx_y
+        sta col_y0
+        lda fx_y+1
+        sta col_y0+1
+        lda db_blast
+        ldy #2
+        jmp debris_burst
+
+; ---------------------------------------------------------------------------
+; debris.  It ignores everything but the ground: no wall stops it and no body
+; feels it.  debris_burst: A pieces thrown out from col_x0/y0 at up to Y
+; pixels a frame, the headings spread and turned a little each burst, up at
+; a quarter to half a pixel a frame; as many as are free (ND at once).  A
+; piece whose bounce is too weak to matter settles: it stops, lies 6 frames
+; and goes, so a piece is a sprite only while it is doing something.
+debris_burst:
+        sta db_n
+        sty q5
+        lda db_h                ; each burst starts somewhere else
+        clc
+        adc #13
+        sta db_h
+@piece: ldx #ND-1
+:       lda db_t,x
+        beq @free
+        dex
+        bpl :-
+        rts                     ; none free
+@free:  lda #48                 ; at most 48 frames: it settles well before
+        sta db_t,x
+        inc db_live
+        lda #$80
+        sta db_xf,x
+        sta db_yf,x
+        lda col_x0
+        sta db_xl,x
+        lda col_x0+1
+        sta db_xh,x
+        lda col_y0
+        sta db_yl,x
+        lda col_y0+1
+        sta db_yh,x
+        lda #0
+        sta db_zl,x
+        sta db_zh,x
+        sta db_vzh,x
+        lda db_h                ; up at 1/4 to 1/2 a pixel a frame
+        and #$3F
+        ora #$40
+        sta db_vzl,x
+        lda db_h                ; along its heading
+        clc
+        adc #64
+        tay
+        lda PHYS_SINE,y
+        jsr times_speed
+        sta db_vxl,x
+        tya
+        sta db_vxh,x
+        ldy db_h
+        lda PHYS_SINE,y
+        jsr times_speed
+        sta db_vyl,x
+        tya
+        sta db_vyh,x
+        lda db_h                ; the next piece's heading
+        clc
+        adc #37
+        sta db_h
+        dec db_n
+        bne @piece
+        rts
+
+; debris_step: every piece one frame: gravity; on the ground it bounces at
+; half its speed and loses half its speed along the ground
+debris_step:
+        lda db_live             ; none: nothing to do
+        bne :+
+        rts
+:       ldx #ND-1
+@d:     lda db_t,x
+        bne :+
+        jmp @n
+:       dec db_t,x
+        bne :+
+        dec db_live             ; gone
+        jmp @n
+:
+        lda db_vzl,x
+        sec
+        sbc #GRAV
+        sta db_vzl,x
+        lda db_vzh,x
+        sbc #0
+        sta db_vzh,x
+        lda db_zl,x
+        clc
+        adc db_vzl,x
+        sta db_zl,x
+        lda db_zh,x
+        adc db_vzh,x
+        sta db_zh,x
+        bpl @move
+        lda #0                  ; the ground
+        sta db_zl,x
+        sta db_zh,x
+        sec
+        sbc db_vzl,x
+        sta q0
+        lda #0
+        sbc db_vzh,x
+        lsr a
+        ror q0
+        sta db_vzh,x
+        ora #0                  ; (the store set no flags: test the value)
+        bne :+
+        lda q0
+        cmp #$20                ; under an eighth of a pixel a frame: it settles
+        bcs :+
+        lda #0
+        sta db_vzl,x
+        sta db_vxl,x
+        sta db_vxh,x
+        sta db_vyl,x
+        sta db_vyh,x
+        lda db_t,x              ; and lies 6 frames more at most
+        cmp #6
+        bcc @n
+        lda #6
+        sta db_t,x
+        jmp @n
+:       lda q0
+        sta db_vzl,x
+        lda db_vxh,x
+        cmp #$80
+        ror db_vxh,x
+        ror db_vxl,x
+        lda db_vyh,x
+        cmp #$80
+        ror db_vyh,x
+        ror db_vyl,x
+@move:  lda db_xf,x
+        clc
+        adc db_vxl,x
+        sta db_xf,x
+        lda db_xl,x
+        adc db_vxh,x
+        sta db_xl,x
+        lda db_vxh,x
+        and #$80
+        beq :+
+        lda #$FF
+:       adc db_xh,x
+        sta db_xh,x
+        lda db_yf,x
+        clc
+        adc db_vyl,x
+        sta db_yf,x
+        lda db_yl,x
+        adc db_vyh,x
+        sta db_yl,x
+        lda db_vyh,x
+        and #$80
+        beq :+
+        lda #$FF
+:       adc db_yh,x
+        sta db_yh,x
+@n:     dex
+        bmi :+
+        jmp @d
+:       rts
 
 ; ---------------------------------------------------------------------------
 .segment "OVERLAY"
@@ -1207,3 +1394,22 @@ fx_x:   .res 2                  ; the last hit, for the game to draw
 fx_y:   .res 2
 fx_t:   .res 1
 fx_k:   .res 1                  ; what it was: 1 a shot's stop, 2 a blast
+db_t:   .res ND                 ; debris: frames left, 0 = none
+db_xf:  .res ND
+db_xl:  .res ND
+db_xh:  .res ND
+db_yf:  .res ND
+db_yl:  .res ND
+db_yh:  .res ND
+db_zl:  .res ND                 ; height, 8.8
+db_zh:  .res ND
+db_vxl: .res ND
+db_vxh: .res ND
+db_vyl: .res ND
+db_vyh: .res ND
+db_vzl: .res ND
+db_vzh: .res ND
+db_h:   .res 1                  ; the next piece's heading
+db_live: .res 1                 ; pieces in the air or on the ground
+db_blast: .res 1                ; pieces a blast throws out: the game's to set, 0 after col_init
+db_n:   .res 1                  ; pieces still to throw
