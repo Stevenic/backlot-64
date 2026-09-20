@@ -15,6 +15,7 @@ Details and rankings are in `docs/PRIOR-ART.md`. Each adopted technique also car
 - **Scott Robison and David Murray**, Attack of the PETSCII Robots C64 REU edition (study licence, ideas only): editing the master copy of an asset in the REU so every instance updates, the dirty-cell compare before a bitmap DMA, per-index address tables for streamed tiles, self-stashing asset programs.
 - **Stefano Coppi**, Chrome Horizon: the parallax split with a mid-screen scroll register write.
 - **Bobbi Webber-Manners**, EightBall: the frame-pointer-relative locals scheme; the stack-machine comparison that confirmed the register model.
+- **Stuart Lloyd** (Bell Labs, 1957; published 1982), least-squares quantisation in PCM: the clustering that `tools/b64band.py` uses to choose a charset for a picture, a cluster's character drawn from its members' mean. Changed: the cluster count is not free but set by the chip -- twelve characters a colour value for the ones that show a colour, the rest sharing the codes that are left.
 - **Steve Wozniak**, SWEET16: the single-page dispatch table and push-and-return jump that the VM's first dispatcher used.
 
 ## AI (docs/AI.md)

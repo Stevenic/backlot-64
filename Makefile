@@ -28,10 +28,10 @@ endif
 VICE_REU = -reu -reusize $(REUSIZE) -reuimage $(REUIMG) +reuimagerw
 
 
-.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky run-hover run-plane run-debris run-marsh run-crowd run-modules shot-scroll palette clean check bench
+.PHONY: all assets run-scroll run-traffic run-physics run-boats run-sky run-hover run-plane run-debris run-marsh run-crowd run-land run-modules shot-scroll palette clean check bench
 
 # examples/physics's scenes, name:define (the SCENE template below)
-SCENES = boats:COAST sky:SKY hover:HOVER plane:PLANE debris:DEBRIS marsh:MARSH crowd:CROWD
+SCENES = boats:COAST sky:SKY hover:HOVER plane:PLANE debris:DEBRIS marsh:MARSH crowd:CROWD land:LAND
 SCENE_NAMES = $(foreach s,$(SCENES),$(word 1,$(subst :, ,$(s))))
 SCENE_PRGS = $(foreach n,$(SCENE_NAMES),$(BUILD)/$(n).prg $(BUILD)/$(n)-auto.prg)
 all: $(BUILD)/scroll.prg $(BUILD)/scroll-auto.prg $(BUILD)/traffic.prg $(BUILD)/traffic-auto.prg $(BUILD)/physics.prg $(BUILD)/physics-auto.prg $(BUILD)/cutscene.prg $(BUILD)/overlay.prg $(BUILD)/showcase.prg $(BUILD)/mux.prg $(BUILD)/mux64.prg $(BUILD)/modules.prg $(SCENE_PRGS) $(REU)
@@ -44,7 +44,22 @@ $(BUILD):
 $(BUILD)/bellamar_day.bin $(BUILD)/bellamar_day.inc $(BUILD)/sprites0.spr: tools/b64tileset.py tools/b64art.py | $(BUILD)
 	$(PY) tools/b64tileset.py bellamar_day $(BUILD)/bellamar_day.bin --sprites $(BUILD)/sprites0.spr
 
-$(BUILD)/world.map $(BUILD)/world.reg: tools/b64world.py tools/b64tileset.py | $(BUILD)
+$(BUILD)/bellamar_34.bin $(BUILD)/bellamar_34.inc: tools/b64tileset.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64tileset.py bellamar_34 $(BUILD)/bellamar_34.bin
+
+$(BUILD)/bellamar_flat.bin $(BUILD)/bellamar_flat.inc: tools/b64tileset.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64tileset.py bellamar_flat $(BUILD)/bellamar_flat.bin
+
+$(BUILD)/bellamar_band.bin $(BUILD)/bellamar_band.inc: tools/b64tileset.py tools/b64art.py | $(BUILD)
+	$(PY) tools/b64tileset.py bellamar_band $(BUILD)/bellamar_band.bin
+
+# the reference image itself, fitted into a charset at design time
+$(BUILD)/cityenc.bin $(BUILD)/cityenc.strip: tools/b64band.py tools/b64tileset.py images/city-band.png | $(BUILD)
+	$(PY) tools/b64band.py encode images/city-band.png \
+	  --scale 0.25 --chars 96 --tileset $(BUILD)/cityenc.bin --strip $(BUILD)/cityenc.strip \
+	  --road 3,4 --walk 2,5 --solid 0,1,6,7
+
+$(BUILD)/world.map $(BUILD)/world.reg: tools/b64world.py tools/b64tileset.py $(BUILD)/cityenc.strip | $(BUILD)
 	$(PY) tools/b64world.py bellamar_test $(BUILD)/world.map $(BUILD)/world.reg
 
 # cutscene assets from generated art (images/) through the quantiser
@@ -88,7 +103,7 @@ $(BUILD)/block.spr: | $(BUILD)
 $(BUILD)/slots.inc: reu.manifest tools/b64pack.py | $(BUILD)
 	$(PY) tools/b64pack.py --inc reu.manifest $@
 
-$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr $(BUILD)/airboat16.spr $(BUILD)/ai.bin $(BUILD)/cut.bin $(BUILD)/modscript.bin $(BUILD)/modops.bin
+$(REU): reu.manifest tools/b64pack.py $(BUILD)/ovl1.bin $(BUILD)/ovl2.bin $(BUILD)/day.still $(BUILD)/daylight.bin $(BUILD)/nightlight.bin $(BUILD)/show.bin $(BUILD)/world.map $(BUILD)/world.reg $(BUILD)/bellamar_day.bin $(BUILD)/sprites0.spr $(BUILD)/night.still $(BUILD)/night-parked.still $(BUILD)/cruiser.grid $(BUILD)/cruiser.bblock $(BUILD)/cruiser.b64o $(BUILD)/lamp.spr $(BUILD)/block.spr $(BUILD)/ultimate.bin $(BUILD)/scene.bin $(BUILD)/benchscripts.bin $(BUILD)/physics.bin $(BUILD)/cars16.spr $(BUILD)/collision.bin $(BUILD)/water.bin $(BUILD)/boats16.spr $(BUILD)/air.bin $(BUILD)/heli16.spr $(BUILD)/helish16.spr $(BUILD)/plane16.spr $(BUILD)/planesh16.spr $(BUILD)/airboat16.spr $(BUILD)/ai.bin $(BUILD)/cut.bin $(BUILD)/modscript.bin $(BUILD)/modops.bin $(BUILD)/bellamar_34.bin $(BUILD)/bellamar_flat.bin $(BUILD)/bellamar_band.bin $(BUILD)/cityenc.bin
 	$(PY) tools/b64pack.py reu.manifest $(REU) -
 
 # p-code blobs: assembled at offset 0, packed into REU slots
@@ -200,6 +215,18 @@ $(BUILD)/traffic.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc |
 
 $(BUILD)/traffic-auto.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
 	$(AS) -g -t c64 $(INC) -D AUTODRIVE=1 -o $@ $<
+
+$(BUILD)/street.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D AUTODRIVE=1 -D STREET=1 -o $@ $<
+
+$(BUILD)/cityenc.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc | $(BUILD)
+	$(AS) -g -t c64 $(INC) -D AUTODRIVE=1 -D CITYENC=1 -o $@ $<
+
+$(BUILD)/street.prg: $(ENGINE_OBJS) $(BUILD)/street.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/street.o -Ln $(BUILD)/street.lbl
+
+$(BUILD)/cityenc.prg: $(ENGINE_OBJS) $(BUILD)/cityenc.o $(CFG)
+	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/cityenc.o -Ln $(BUILD)/cityenc.lbl
 
 $(BUILD)/traffic.prg: $(ENGINE_OBJS) $(BUILD)/traffic.o $(CFG)
 	$(LD) -C $(CFG) -o $@ $(BUILD)/b64_core.o $(filter-out $(BUILD)/b64_core.o,$(ENGINE_OBJS)) $(BUILD)/traffic.o -m $(BUILD)/traffic.map -Ln $(BUILD)/traffic.lbl
@@ -385,3 +412,17 @@ clean:
 	rm -rf $(BUILD)
 
 .SECONDARY:
+
+# the band city and the encoded reference image, profiled: the same traffic
+# example over the two districts (docs/VIEWS.md, the band city)
+$(PBUILD)/street.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
+	$(AS) -g -t c64 -DB64_PROFILE -D AUTODRIVE=1 -D STREET=1 $(INC) -o $@ $<
+
+$(PBUILD)/cityenc.o: examples/traffic/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
+	$(AS) -g -t c64 -DB64_PROFILE -D AUTODRIVE=1 -D CITYENC=1 $(INC) -o $@ $<
+
+$(PBUILD)/scroll-street.o: examples/scroll/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
+	$(AS) -g -t c64 -DB64_PROFILE -D AUTODRIVE=1 -D STREET=1 $(INC) -o $@ $<
+
+$(PBUILD)/scroll-cityenc.o: examples/scroll/main.s include/b64.inc $(BUILD)/slots.inc | $(PBUILD)
+	$(AS) -g -t c64 -DB64_PROFILE -D AUTODRIVE=1 -D CITYENC=1 $(INC) -o $@ $<

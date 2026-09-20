@@ -7,8 +7,16 @@
 
 .export game_main
 
+.if .defined(STREET)            ; the band district (docs/VIEWS.md, the band city)
+CAM_START_X     = 1220 * 32
+CAM_START_Y     = 1204 * 32
+.elseif .defined(CITYENC)       ; the encoded reference image, as its own district
+CAM_START_X     = 1520 * 32
+CAM_START_Y     = 1203 * 32
+.else
 CAM_START_X     = 1300 * 32
 CAM_START_Y     = 1000 * 32
+.endif
 SPR_CX          = 24 + 160 - 12
 SPR_CY          = 50 + 100 - 10
 
@@ -27,9 +35,25 @@ car_off:        .res NCARS      ; distance from centre, signed, for the turnarou
 .segment "GAME"
 game_main:
         jsr b64_init
+.if .defined(STREET)
+        B64_SET24 b64_reu, SLOT_TILESETBD
+.elseif .defined(CITYENC)
+        B64_SET24 b64_reu, SLOT_TILESETIM
+.else
         B64_SET24 b64_reu, SLOT_TILESET0
+.endif
         jsr b64_load_tileset
 
+.if .defined(STREET) .or .defined(CITYENC)
+        lda #0                  ; the band city: black, dark grey, light grey
+        sta VIC_BG_COLOR0
+        lda #11
+        sta VIC_BG_COLOR1
+        lda #15
+        sta VIC_BG_COLOR2
+        lda #0
+        sta VIC_BORDERCOLOR
+.else
         ; Bellamar day shared colours
         lda #11
         sta VIC_BG_COLOR0
@@ -39,6 +63,7 @@ game_main:
         sta VIC_BG_COLOR2
         lda #11
         sta VIC_BORDERCOLOR
+.endif
 
         B64_SET16 b64_cam_x, CAM_START_X
         B64_SET16 b64_cam_y, CAM_START_Y

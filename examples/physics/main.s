@@ -44,6 +44,12 @@
 ; a helicopter holding 32 pixels up across the road: shots and a grenade
 ; pass beneath it until it settles.
 ;
+; Assembled with -D LAND=1 (make run-land) it draws the same city with the
+; three-quarter tileset (build/bellamar_34.bin) and a helicopter coming down
+; onto the road: nothing on its stick, so it settles, its shadow closing on
+; it as it falls and its rotor turning all the while.  Down and still, a
+; passenger gets out beside it and walks away.
+;
 ; Assembled with -D SKY=1 (make run-sky) it starts on the pavement with a
 ; helicopter on the road; getting in fetches the air module.  Buildings are
 ; walls to it only below their height (the tileset's heights table).
@@ -73,6 +79,12 @@ ROAD_Y  = 1000 * 32 + 16
 START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000,
 START_Y = 1001 * 32 + 16        ; which runs east long enough to take off from
 ROAD_Y  = 1000 * 32 + 16
+.elseif .defined(LAND)
+START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000
+START_Y = 1001 * 32 + 16
+HELI_X  = 1300 * 32 + 56        ; the helicopter comes down onto the road east of the player
+HELI_Y  = 1000 * 32 + 16
+LAND_Z  = 72                    ; the height it starts at, pixels
 .elseif .defined(HOVER)
 START_X = 1300 * 32 + 16        ; the pavement south of the road at metatile row 1000;
 START_Y = 1001 * 32 + 16        ; the helicopter lifts off the pavement across it
@@ -108,6 +120,8 @@ ped_t:   .res PHYS_NB           ; per pedestrian: frames until it picks a new wa
 ped_in:  .res PHYS_NB
 crash_t: .res 1                 ; the player's car's impact at the last step (DEBRIS)
 veh_p:   .res 1                 ; a spinning rotor's frame, while one is worked out
+jumped:  .res 1                 ; LAND: 1 once the passenger is out
+heli_i:  .res 1                 ; LAND: the helicopter, while its passenger is added
 colour:  .res PHYS_NB
 tape_i:  .res 1                 ; AUTODRIVE: the tape's position and frames left
 tape_n:  .res 1
@@ -118,7 +132,11 @@ hudbuf:  .res 41
 .segment "GAME"
 game_main:
         jsr b64_init
+.ifdef LAND
+        B64_SET24 b64_reu, SLOT_TILESET34       ; the same city, drawn at three quarters
+.else
         B64_SET24 b64_reu, SLOT_TILESET0
+.endif
         jsr b64_load_tileset
         lda #11
         sta VIC_BG_COLOR0
@@ -173,6 +191,10 @@ game_main:
         lda #2                  ; this scene starts in the air module
         jsr use_module
 .endif
+.ifdef LAND
+        lda #2                  ; the helicopter's mover lives in the air module
+        jsr use_module
+.endif
 .ifdef MARSH
         lda #1                  ; this scene starts in the water module: the
         jsr use_module          ; speedboat at sea moves from the first frame
@@ -222,6 +244,25 @@ game_main:
         inx
         bne @add
 @added:
+.ifdef LAND
+        lda #0                  ; the helicopter starts at LAND_Z, coming down
+        sta jumped
+        ldx #PHYS_NB-1
+:       lda pb_mov,x
+        cmp #M_AIR
+        beq :+
+        dex
+        bpl :-
+:       lda #LAND_Z             ; up in the air, awake, and coming down: a body
+        sta pb_zh,x             ; put there by hand would otherwise sleep where it
+        lda pb_st,x             ; was added, and hold the height for ever
+        and #<~ST_SLEEP
+        sta pb_st,x
+        lda #0
+        sta pb_idle,x
+        lda #LAND_Z
+        sta pb_agl,x
+.endif
 .ifdef CROWD
         jsr brains
 .endif
@@ -270,6 +311,18 @@ start_yl:  .byte <START_Y, <ROAD_Y, <START_Y, <START_Y
 start_yh:  .byte >START_Y, >ROAD_Y, >START_Y, >START_Y
 start_ang: .byte 0, 0, 0, 0
 start_col: .byte 13, 7, 4, 3
+.elseif .defined(LAND)
+; the starting bodies: the player on the pavement, a helicopter above the
+; road (put up at LAND_Z once it is added), a car parked along the road and
+; two people on the pavement
+start_mov: .byte M_FOOT, M_AIR, M_WHEELS, M_FOOT, M_FOOT, 0
+start_cls: .byte C_WALKER, C_HELI, C_SEDAN, C_WALKER, C_WALKER
+start_xl:  .byte <START_X, <HELI_X, <(START_X - 70), <(START_X - 40), <(START_X + 110)
+start_xh:  .byte >START_X, >HELI_X, >(START_X - 70), >(START_X - 40), >(START_X + 110)
+start_yl:  .byte <START_Y, <HELI_Y, <(1000 * 32 + 24), <START_Y, <START_Y
+start_yh:  .byte >START_Y, >HELI_Y, >(1000 * 32 + 24), >START_Y, >START_Y
+start_ang: .byte 0, 64, 0, 0, 128
+start_col: .byte 13, 14, 2, 4, 3
 .elseif .defined(HOVER)
 ; the starting bodies: the player, a helicopter across the road, which holds
 ; 32 pixels up and then settles, and a car parked along the road
@@ -346,6 +399,9 @@ after_ai:
 .endif
 .ifdef HOVER
         jsr pilots
+.endif
+.ifdef LAND
+        jsr landing
 .endif
 .ifdef MARSH
         jsr captains
@@ -691,6 +747,65 @@ captains:
 @n:     dex
         bpl @c
         rts
+.endif
+
+.ifdef LAND
+; landing: the helicopter comes down with nothing on its stick; once it is
+; on the ground and still, a passenger gets out beside it and walks away
+landing:
+        ldx #PHYS_NB-1
+@p:     cpx player
+        beq @n
+        lda pb_mov,x
+        cmp #M_AIR
+        bne @n
+        lda #0
+        sta pb_in,x             ; no hand on it: it settles
+        lda jumped
+        bne @n
+        lda pb_zh,x             ; on the ground (its height, not the stale
+        ora pb_agl,x            ; height above what is under it)
+        bne @n
+        lda pb_vzl,x            ; and still
+        ora pb_vzh,x
+        bne @n
+        stx heli_i
+        jsr passenger
+        ldx heli_i
+@n:     dex
+        bpl @p
+        rts
+
+; passenger: X = the helicopter -> a walker beside it, on the camera's side,
+; walking away south; the walkers routine takes it from there
+passenger:
+        lda pb_xl,x
+        sta phys_x
+        lda pb_xh,x
+        sta phys_x+1
+        lda pb_yl,x
+        clc
+        adc #18
+        sta phys_y
+        lda pb_yh,x
+        adc #0
+        sta phys_y+1
+        lda #64
+        sta phys_a
+        ldy #C_WALKER
+        lda #M_FOOT
+        jsr PHYS_ADD
+        bcc @none
+        lda #10
+        sta colour,x
+        lda #IN_DOWN
+        sta ped_in,x
+        lda #70
+        sta ped_t,x
+        lda #0
+        sta pb_in,x
+        inc jumped
+@none:  rts
 .endif
 
 .ifdef HOVER
@@ -1507,6 +1622,11 @@ tape_joy:  .byte 0, IN_RIGHT, IN_RIGHT | IN_FIRE, 0, 0, IN_LEFT | IN_FIRE, 0
 tape_len:  .byte 40, 30, 1, 1, 110, 100, 30, 128, 30, 140, 110, 1, 1, 40, 60, 0
 tape_joy:  .byte 0, IN_UP | IN_RIGHT, IN_FIRE, 0, IN_UP, IN_UP | IN_FIRE, IN_UP, IN_UP | IN_RIGHT, IN_UP, IN_DOWN
            .byte IN_DOWN, IN_DOWN | IN_FIRE, 0, IN_LEFT, 0
+.elseif .defined(LAND)
+; the player stands and watches it come down and the passenger get out, then
+; walks east along the pavement toward them
+tape_len:  .byte 210, 90, 60, 0
+tape_joy:  .byte 0, IN_RIGHT, 0
 .elseif .defined(HOVER)
 ; wait for the helicopter to lift; face north, three shots at it, which pass
 ; beneath; a grenade under it, whose blast does not reach it; wait for it to

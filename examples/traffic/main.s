@@ -63,8 +63,16 @@ C_WAIT  = $02                   ; held at a stop line
 C_INX   = $04                   ; inside the crossing where it turns
 C_PLAN  = $08                   ; just spawned: the way ahead is still to be read
 
+.if .defined(STREET)            ; the band district, drawn to the reference image
+START_X = 1220 * 32 + 16        ; on the road, the shopfronts above and the roofs below
+START_Y = 1203 * 32 + 16
+.elseif .defined(CITYENC)       ; the encoded district: the reference image itself
+START_X = 1520 * 32 + 16
+START_Y = 1203 * 32 + 16
+.else
 START_X = 1300 * 32 + 16        ; on the road at metatile row 1000, eastbound lane
 START_Y = 1000 * 32 + 24
+.endif
 
 ; zero page: the game's range
 zt      = $70                   ; 8 bytes: metatile coordinates, temporaries
@@ -134,8 +142,24 @@ hudbuf: .res 41
 .segment "GAME"
 game_main:
         jsr b64_init
+.if .defined(STREET)
+        B64_SET24 b64_reu, SLOT_TILESETBD
+.elseif .defined(CITYENC)
+        B64_SET24 b64_reu, SLOT_TILESETIM
+.else
         B64_SET24 b64_reu, SLOT_TILESET0
+.endif
         jsr b64_load_tileset
+.if .defined(STREET) .or .defined(CITYENC)
+        lda #0                  ; the band city: black, dark grey, light grey shared,
+        sta VIC_BG_COLOR0       ; white the one colour a cell may add (docs/ART.md)
+        lda #11
+        sta VIC_BG_COLOR1
+        lda #15
+        sta VIC_BG_COLOR2
+        lda #0
+        sta VIC_BORDERCOLOR
+.else
         lda #11                 ; Bellamar by day
         sta VIC_BG_COLOR0
         lda #15
@@ -144,6 +168,7 @@ game_main:
         sta VIC_BG_COLOR2
         lda #11
         sta VIC_BORDERCOLOR
+.endif
 
         lda #$A5
         sta rnd
@@ -204,7 +229,11 @@ game_main:
         sta VIC_SPR0_X
         lda #PCY + 40
         sta VIC_SPR0_Y
+.if .defined(STREET) .or .defined(CITYENC)
+        lda #7                  ; yellow: the one car the eye should follow
+.else
         lda #13                 ; light green: no traffic car has it
+.endif
         sta VIC_SPR0_COLOR
         lda #1
         sta VIC_SPR_ENA
@@ -2060,7 +2089,13 @@ step_dx:        .byte 0, 1, 0, $FF
 step_dxh:       .byte 0, 0, 0, $FF
 step_dy:        .byte $FF, 0, 1, 0
 step_dyh:       .byte $FF, 0, 0, 0
+.if .defined(STREET) .or .defined(CITYENC)
+; the band city is grey, so the traffic is too: white, light grey, dark grey
+; and black, the only greys a sprite's own colour may be (docs/ART.md)
+traffic_col:    .byte 1, 15, 11, 15, 1, 12, 11, 15
+.else
 traffic_col:    .byte 1, 15, 2, 6, 14, 7, 3, 4  ; never 13, the player's
+.endif
 pop_h:          .byte H_W, H_E
 pop_lane:       .byte 8, 24
 pop_v:          .byte H_S, H_N

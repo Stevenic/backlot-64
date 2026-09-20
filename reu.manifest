@@ -36,6 +36,10 @@ slot    MODSCRIPT $56E400  build/modscript.bin ; examples/modules: the game in p
 slot    MODOPS    $56F000  build/modops.bin    ; and its own module, the handlers of its game opcodes
 slot    HELI16    $570000  build/heli16.spr    ; a helicopter at 16 headings by 4 blade phases (4 KB)
 slot    HELISH16  $571000  build/helish16.spr  ; its shadow, the same outline in one colour
+slot    TILESET34 $572000  build/bellamar_34.bin ; the three-quarter set, for interiors (docs/VIEWS.md)
+slot    TILESETFL $576000  build/bellamar_flat.bin ; flat roofs, height by shadow: the district at 800,900
+slot    TILESETBD $580000  build/bellamar_band.bin ; the band city, drawn to the reference: the district at 1200,1200
+slot    TILESETIM $584000  build/cityenc.bin       ; the reference image itself, encoded (tools/b64band.py): 1500,1200
 
 ; the modules the VM loads and unloads (docs/MODULES.md): each names its slot,
 ; where it runs, what it provides and requires; the VM never evicts a module

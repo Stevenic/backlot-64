@@ -50,6 +50,85 @@ FONT = {
 # ---------------------------------------------------------------------------
 # Canvas: pixel buffer + per-cell colour, exported to charset/screen/colour
 # ---------------------------------------------------------------------------
+class Char:
+    """One 8x8 character, drawn in its own mode.
+
+    A hires character is eight pixels across and shows two colours: the
+    shared background 0 where a bit is clear, its own colour where set.  A
+    multicolour one is four double-wide pixels of four values: 0, 1 and 2
+    are the three shared colours and 3 is its own.  A multicolour character
+    that never uses 3 shows no colour of its own at all, so it costs nothing
+    against any colour's budget (docs/PREPARE.md, tilesets).
+
+    Tilesets that want a reference sheet's crispness draw the two-colour
+    cells -- pavement, grass, shadow, road markings -- as hires characters,
+    where a seam or a lane stripe is one pixel wide instead of two.
+    """
+
+    def __init__(self, mc=True, colour=WHITE):
+        self.mc = mc
+        self.colour = colour
+        self.w = 4 if mc else 8
+        self.px = [[0] * self.w for _ in range(8)]
+
+    def put(self, x, y, v):
+        if 0 <= x < self.w and 0 <= y < 8:
+            self.px[y][x] = v
+        return self
+
+    def fill(self, x, y, w, h, v):
+        for j in range(y, min(8, y + h)):
+            for i in range(x, min(self.w, x + w)):
+                self.px[j][i] = v
+        return self
+
+    def all(self, v):
+        return self.fill(0, 0, self.w, 8, v)
+
+    def hline(self, x, y, w, v):
+        return self.fill(x, y, w, 1, v)
+
+    def vline(self, x, y, h, v):
+        return self.fill(x, y, 1, h, v)
+
+    def rect(self, x, y, w, h, v):
+        self.hline(x, y, w, v); self.hline(x, y + h - 1, w, v)
+        self.vline(x, y, h, v); self.vline(x + w - 1, y, h, v)
+        return self
+
+    def dots(self, v, sx=3, sy=3, ox=0, oy=0):
+        for y in range(oy, 8, sy):
+            for x in range((ox + y) % sx, self.w, sx):
+                self.px[y][x] = v
+        return self
+
+    def chequer(self, v, phase=0):
+        for y in range(8):
+            for x in range(self.w):
+                if (x + y + phase) & 1:
+                    self.px[y][x] = v
+        return self
+
+    def bits(self):
+        """The eight bytes the VIC reads."""
+        out = []
+        for row in self.px:
+            b = 0
+            if self.mc:
+                for i in range(4):
+                    b |= (row[i] & 3) << (6 - 2 * i)
+            else:
+                for i in range(8):
+                    b |= (row[i] & 1) << (7 - i)
+            out.append(b)
+        return tuple(out)
+
+    def copy(self):
+        c = Char(self.mc, self.colour)
+        c.px = [row[:] for row in self.px]
+        return c
+
+
 class Canvas:
     def __init__(self, mc, w=W, h=H):
         self.mc = mc
