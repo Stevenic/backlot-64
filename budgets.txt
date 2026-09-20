@@ -114,7 +114,11 @@ debris.step_median           8350   #  7940   phys_step, the city's bodies, over
 debris.step_worst           15750   # 14993
 debris.col_median             260   #   238   shot_step: shots, grenades and debris, over 560 steps
 debris.col_worst             7450   #  7095   a blast: bodies pushed and six pieces thrown
-debris.frames_lost             77   #    73   of 560: a city frame has no time to spare for six more sprites
+debris.frames_lost             85   #    81   of 560: a city frame has no time to spare for six more sprites.
+#                                             Raised from 77 on 2026-09-19: a body with altitude no longer
+#                                             sleeps (modules/physics/core.s, rest), because one that did
+#                                             froze in mid-air.  Measured both ways with the same tape:
+#                                             76 lost frames with the old rest, 81 with the new one.
 marsh.step_median            4800   #  4558   phys_step, an airboat, a speedboat and the player, over 400 steps
 marsh.step_worst             7750   #  7387
 marsh.frames_lost               2   #     0   of 400

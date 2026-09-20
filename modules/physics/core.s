@@ -167,9 +167,14 @@ hold:
         sta pb_st,x
         rts
 
-; rest: a body with no input and no speed for 32 frames sleeps
+; rest: a body with no input and no speed for 32 frames sleeps.  A body off
+; whatever is under it never does: an aircraft left alone must go on
+; settling, and one that slept in the air would hang there (the landing
+; scene, 2026-09-19).
 rest:
         lda pb_in,x
+        bne @busy
+        lda pb_agl,x
         bne @busy
         lda pb_st,x
         and #ST_DOWN
